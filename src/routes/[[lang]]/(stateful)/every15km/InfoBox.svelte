@@ -85,7 +85,7 @@
           <span class="sep">·</span>
         {/if}
       {/await}
-      <a href={$lr(routes.MAP)}>{$_('map.every15km.explore-all')}</a>
+      <a href={$lr(routes.MAP)} target="_blank" rel="noopener">{$_('map.every15km.explore-all')}</a>
     </p>
   </div>
 {/snippet}
@@ -146,7 +146,7 @@
     aria-label={$_('map.every15km.expand')}
     onclick={() => (open = true)}
   >
-    <span class="title">{$_('map.every15km.title')}</span>
+    <span class="title">{$_('map.every15km.title')} 🏕️</span>
     <span class="circle" aria-hidden="true"><Icon icon={chevronUpIcon} /></span>
   </button>
 {/if}
@@ -269,18 +269,19 @@
   /* Orange underline accent below the title (per the design). */
   .desktop-header .title {
     position: relative;
-    font-size: 2.1rem;
-    padding-bottom: 0.8rem;
+    /* Match the collapsed pill's title size so the text doesn't reflow on expand. */
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
   }
 
   .desktop-header .title::after {
     content: '';
     position: absolute;
     left: 0;
-    bottom: 0;
-    width: 4rem;
+    bottom: -14px;
+    width: 9rem;
     height: 3px;
-    background-color: var(--color-orange-light);
+    background-color: var(--color-orange);
     border-radius: 2px;
   }
 
@@ -345,7 +346,9 @@
     position: absolute;
     left: var(--spacing-map-controls);
     right: var(--spacing-map-controls);
-    bottom: calc(var(--spacing-map-controls) + env(safe-area-inset-bottom, 0px));
+    /* The map container is already offset above the mobile nav (which includes
+       the safe-area inset), so no extra safe-area inset is needed here. */
+    bottom: var(--spacing-map-controls);
     z-index: 5;
     display: flex;
     align-items: center;

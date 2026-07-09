@@ -1216,11 +1216,11 @@
       }
     },
     "every15km": {
-      "title": "Difundamos WTMG por toda Europa",
-      "intro": "¿Y si… hubiera un <strong>jardín acogedor cada 15 km por toda Europa</strong>, para que todos pudiéramos caminar o pedalear de jardín en jardín?",
+      "title": "Demos a conocer WTMG por toda Europa!",
+      "intro": "¿Y si hubiera <strong>un jardín acogedor cada 15 km en toda Europa</strong>, para que todos pudiéramos caminar o ir en bici de jardín en jardín?",
       "legend": {
         "covered": "WTMG a menos de {radius} km",
-        "gap": "Ningún WTMG cerca"
+        "gap": "No hay WTMG cerca"
       },
       "cta": "Ayúdanos a hacer el viaje lento más accesible y a alcanzar los 10.000 jardines este verano:",
       "share": "Comparte WTMG",
