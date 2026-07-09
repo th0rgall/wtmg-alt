@@ -14,7 +14,6 @@
   import { innerWidth } from 'svelte/reactivity/window';
   import { Modal, Button, Icon } from '$lib/components/UI';
   import { crossIcon, chevronUpIcon } from '$lib/images/icons';
-  import CircleIconButton from './CircleIconButton.svelte';
   import { COVERAGE_RADIUS_KM, LEGEND_COLORS } from '$lib/components/Map/CoverageLayer.svelte';
   import { MOBILE_BREAKPOINT } from '$lib/constants';
   import routes from '$lib/routes';
@@ -140,14 +139,16 @@
     {@render content()}
   </section>
 {:else}
-  <div class="desktop-collapsed" transition:fly={{ y: 200, duration: 250 }}>
-    <h2 class="title">{$_('map.every15km.title')}</h2>
-    <CircleIconButton
-      icon={chevronUpIcon}
-      ariaLabel={$_('map.every15km.expand')}
-      onclick={() => (open = true)}
-    />
-  </div>
+  <!-- The whole pill is the expand control; the circle is a decorative affordance. -->
+  <button
+    class="desktop-collapsed"
+    transition:fly={{ y: 200, duration: 250 }}
+    aria-label={$_('map.every15km.expand')}
+    onclick={() => (open = true)}
+  >
+    <span class="title">{$_('map.every15km.title')}</span>
+    <span class="circle" aria-hidden="true"><Icon icon={chevronUpIcon} /></span>
+  </button>
 {/if}
 
 <style>
@@ -313,20 +314,26 @@
   }
 
   /* ---- Desktop collapsed pill ---- */
+  /* The whole pill is the expand button. Matches the expanded panel width. */
   .desktop-collapsed {
     position: absolute;
     right: var(--spacing-map-controls);
     bottom: calc(var(--height-footer, 4.5rem) + var(--spacing-map-controls));
     z-index: 5;
-    width: 30rem;
+    width: 36rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
     background-color: var(--color-white);
+    border: none;
     border-radius: var(--modal-border-radius);
     box-shadow: 0px 4px 14px rgba(0, 0, 0, 0.18);
     padding: 1.6rem 1.8rem;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: var(--color-green);
   }
 
   .desktop-collapsed .title {
@@ -376,8 +383,8 @@
     line-height: 1.4;
   }
 
-  /* Decorative circle matching CircleIconButton's look. */
-  .collapsed-bar .circle {
+  /* Decorative chevron circle, shared by both collapsed variants. */
+  .circle {
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -390,13 +397,15 @@
     transition: background-color 200ms ease;
   }
 
-  .collapsed-bar .circle :global(i) {
+  .circle :global(i) {
     width: 1.4rem;
     height: 1.4rem;
   }
 
   .collapsed-bar:hover .circle,
-  .collapsed-bar:focus .circle {
+  .collapsed-bar:focus-visible .circle,
+  .desktop-collapsed:hover .circle,
+  .desktop-collapsed:focus-visible .circle {
     background-color: var(--color-green);
     color: var(--color-white);
   }

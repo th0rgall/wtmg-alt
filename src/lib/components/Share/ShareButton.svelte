@@ -64,7 +64,9 @@
     font-weight: bold;
     cursor: pointer;
     text-decoration: none;
-    transition: border-color 300ms ease-in-out;
+    transition:
+      background-color 200ms ease-in-out,
+      border-color 200ms ease-in-out;
   }
 
   .share-button.primary {
@@ -72,10 +74,21 @@
     color: var(--color-white);
   }
 
+  /* Use :focus-visible (not :focus) so a mouse click doesn't leave the hover
+     style stuck on the button after pressing; keyboard focus is still styled. */
+
+  /* Outline: subtle green tint fill — keeps the green/brand icons legible. */
   .share-button:hover,
-  .share-button:focus {
-    border-color: var(--color-orange);
+  .share-button:focus-visible {
+    background-color: var(--color-green-light-2);
     outline: 0;
+  }
+
+  /* Primary (filled): darken on hover instead. */
+  .share-button.primary:hover,
+  .share-button.primary:focus-visible {
+    background-color: var(--color-green-dark);
+    border-color: var(--color-green-dark);
   }
 
   .icon {
