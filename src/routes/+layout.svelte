@@ -487,14 +487,16 @@
     padding-top: 0;
   }
 
-  .app.active-explore {
+  .app.active-explore,
+  .app.active-every15km {
     /* Avoid scrollbars */
     overflow-y: auto;
   }
-  .app.active-explore > :global(main) {
+  .app.active-explore > :global(main),
+  .app.active-every15km > :global(main) {
     /* Make sure the map fills the entire space */
     height: 100%;
-    /* No max-width on the explore page */
+    /* No max-width on the map pages */
     max-width: unset;
   }
   /*
@@ -572,7 +574,9 @@
       (they don't need it, or have their own safe area handling)
        Also remove the inset on .error-banner, which has its own inset.
       */
-    .app.native.supports-safe-area:not(.error-banner):not(.active-explore):not(.active-chat) {
+    .app.native.supports-safe-area:not(.error-banner):not(.active-explore):not(
+        .active-every15km
+      ):not(.active-chat) {
       padding-top: env(safe-area-inset-top, 0px);
     }
 
