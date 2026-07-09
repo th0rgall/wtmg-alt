@@ -28,7 +28,6 @@
     disabled = false,
     ellipsis = false,
     compact = false,
-    title = undefined,
     onclick,
     onchange,
     oninput,

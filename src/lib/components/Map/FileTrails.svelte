@@ -77,70 +77,11 @@
     }
   };
 
-  const getFileDataLayerIdsOnMap = () => {
-    const fileDataLayerIdsOnMap: string[] = [];
-
-    map.getStyle().layers?.map((layer) => {
-      if (layer.id.includes(prefix)) {
-        // Instead of returning the layer ID, we could return the layer object
-
-        // const fileDataLayer: FileDataLayer = {
-        //   id: layer.id,
-        //   name: layer.id,
-        //   visible: layer.layout?.visibility === 'visible',
-        //   geoJson: map.getSource(layer.id)?.data
-        // };
-
-        fileDataLayerIdsOnMap.push(layer.id);
-      }
-    });
-
-    return fileDataLayerIdsOnMap;
-  };
-
-  const setup = async (geoJson?: SourceData) => {
-    map.addSource('trail', {
-      type: 'geojson',
-      data: geoJson || {
-        type: 'FeatureCollection',
-        features: []
-      }
-    });
-
-    map.addLayer({
-      id: 'trail-line',
-      source: 'trail',
-      type: 'line',
-      paint: {
-        'line-width': 7,
-        'line-color': 'indigo',
-        'line-opacity': 0.7
-      }
-    });
-    map.addLayer({
-      id: 'trail-points',
-      source: 'trail',
-      type: 'circle',
-      paint: {
-        'circle-color': 'indigo',
-        'circle-radius': 7,
-        'circle-opacity': 0.9,
-        'circle-stroke-color': '#333',
-        'circle-stroke-width': 0.5
-      }
-    });
-  };
-
   let prevFileDataLayerIds: string[] = [];
 
   // Subscribe to fileDataLayers store and update map layers accordingly when it changes (e.g. when a new file is loaded)
   fileDataLayers.subscribe((fileDataLayers) => {
     const fileDataLayerIds = fileDataLayers.map((fileDataLayer) => fileDataLayer.id);
-
-    // TODO: Discussion
-    // We should get the prevFileDataLayerIds from the map, not from the variable; otherwise, we might miss layers that were added to the map
-    // but not yet added to the store (e.g. when a new file is loaded)
-    // fileDataLayerIds = getFileDataLayerIdsOnMap();
 
     const idsToAdd = fileDataLayerIds.filter((id) => !prevFileDataLayerIds.includes(id)); // IDs that are in the new data, but not in the old data
     const idsToRemove = prevFileDataLayerIds.filter((id) => !fileDataLayerIds.includes(id)); // IDs that are in the old data, but not in the new data

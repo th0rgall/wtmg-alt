@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon } from '.';
   // Intended for hover states when ellipsis is enabled.
-  
+
   interface Props {
     icon?: undefined | string;
     labelFor?: undefined | string;
@@ -28,7 +28,9 @@
       <Icon {icon} />
     </div>
   {/if}
-  <span class="label" title={ellipsis ? title : undefined} class:ellipsis>{@render children?.()}</span>
+  <span class="label" title={ellipsis ? title : undefined} class:ellipsis
+    >{@render children?.()}</span
+  >
 </label>
 
 <style>

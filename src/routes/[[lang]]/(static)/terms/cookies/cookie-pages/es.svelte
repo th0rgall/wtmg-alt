@@ -41,8 +41,8 @@
 </p>
 <p>
   <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies">Las cookies HTTP</a>
-  son el principal mecanismo de almacenamiento para las cookies. Establecemos las siguientes cookies
-  HTTP en respuesta a ciertas acciones que realiza:
+  son el principal mecanismo de almacenamiento para las cookies. Establecemos las siguientes cookies HTTP
+  en respuesta a ciertas acciones que realiza:
 </p>
 <table>
   <thead>

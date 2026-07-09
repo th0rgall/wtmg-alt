@@ -32,8 +32,8 @@
     >Privacy Badger</a
   >
   (Firefox), <a href="https://www.ghostery.com/ghostery-ad-blocker">Ghostery</a> (disponible pour de
-  nombreux navigateurs) ou <a href="https://ublockorigin.com/">uBlock Origin</a> (disponible pour de
-  nombreux navigateurs).
+  nombreux navigateurs) ou <a href="https://ublockorigin.com/">uBlock Origin</a> (disponible pour de nombreux
+  navigateurs).
 </p>
 <h3>‍3. Les cookies mis en place</h3>
 <p>
@@ -156,8 +156,8 @@
 <p>
   Contrairement à de nombreuses autres solutions d'analyse, Plausible
   <a href="https://plausible.io/privacy-focused-web-analytics">ne stocke pas de cookies</a> ou de données
-  de site dans votre navigateur. Cela signifie que nous, ou notre fournisseur de services d'analyse,
-  ne pouvons pas :
+  de site dans votre navigateur. Cela signifie que nous, ou notre fournisseur de services d'analyse, ne
+  pouvons pas :
 </p>
 <ul>
   <li>vous suivre sur différents sites web</li>
