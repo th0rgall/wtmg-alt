@@ -65,6 +65,7 @@
   bind:show
   center={!isMobile}
   stickToBottom={isMobile}
+  nopadding={isMobile}
   maxWidth="52rem"
   {ariaLabelledBy}
   ariaDescribedBy="share-wtmg-subtitle"
