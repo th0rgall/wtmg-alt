@@ -110,7 +110,7 @@
     /* Lift the map scale/distance legend (bottom-right) above the collapsed
        info box bar so it isn't hidden behind it. */
     .map-section :global(.mapboxgl-ctrl-bottom-right) {
-      bottom: calc(env(safe-area-inset-bottom, 0px) + var(--spacing-map-controls) + 5.5rem);
+      bottom: calc(var(--spacing-map-controls) + 5.5rem);
     }
   }
 </style>

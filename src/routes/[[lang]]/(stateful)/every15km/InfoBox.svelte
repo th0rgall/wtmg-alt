@@ -32,6 +32,17 @@
 
   const isMobile = $derived(innerWidth.current != null && innerWidth.current <= MOBILE_BREAKPOINT);
 
+  // Open by default on desktop, collapsed by default on mobile. Applied once,
+  // as soon as the viewport width is known (client-side).
+  let didInitOpen = false;
+  $effect(() => {
+    const w = innerWidth.current;
+    if (!didInitOpen && w != null) {
+      didInitOpen = true;
+      if (w <= MOBILE_BREAKPOINT) open = false;
+    }
+  });
+
   const ariaLabelledBy = 'every15km-infobox-title';
 
   const gardenCountPromise = getGardenCount();
@@ -61,7 +72,7 @@
       <Button uppercase medium fullWidth onclick={onShare}>
         {$_('map.every15km.share')}
       </Button>
-      <Button uppercase medium fullWidth inverse href={$lr(routes.ADD_GARDEN)}>
+      <Button uppercase medium fullWidth inverse href={$lr(routes.ADD_GARDEN)} target="_blank">
         {$_('map.every15km.add-garden')}
       </Button>
     </div>
@@ -106,7 +117,10 @@
       aria-label={$_('map.every15km.expand')}
       onclick={() => (open = true)}
     >
-      <span class="collapsed-title">🏕️ {$_('map.every15km.collapsed-title')}</span>
+      <span class="collapsed-content">
+        <span class="collapsed-emoji" aria-hidden="true">🏕️</span>
+        <span class="collapsed-title">{$_('map.every15km.collapsed-title')}</span>
+      </span>
       <span class="circle" aria-hidden="true"><Icon icon={chevronUpIcon} /></span>
     </button>
   {/if}
@@ -338,12 +352,28 @@
     cursor: pointer;
     text-align: left;
     font-family: inherit;
+    /* Reset the iOS user-agent blue button/link text colour. */
+    color: var(--color-green);
+  }
+
+  /* Emoji stays top-left; the title wraps to its right. */
+  .collapsed-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .collapsed-emoji {
+    flex-shrink: 0;
+    font-size: 1.7rem;
+    line-height: 1.2;
   }
 
   .collapsed-title {
     font-family: var(--fonts-titles);
     font-weight: bold;
     font-size: 1.7rem;
+    line-height: 1.4;
   }
 
   /* Decorative circle matching CircleIconButton's look. */
