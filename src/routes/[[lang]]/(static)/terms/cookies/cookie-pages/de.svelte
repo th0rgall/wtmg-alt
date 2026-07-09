@@ -40,8 +40,8 @@
   Wenn Sie ein neuer Besucher auf unserer Website sind, versuchen wir, nur die Cookies zu setzen,
   die unbedingt erforderlich sind, um die Dienste von <span class="notranslate"
     >Welcome To My Garden</span
-  > bereitzustellen. Wenn möglich, verwenden wir Sitzungscookies: Cookies, die automatisch ablaufen,
-  nachdem Sie Ihren Browser geschlossen haben.
+  > bereitzustellen. Wenn möglich, verwenden wir Sitzungscookies: Cookies, die automatisch ablaufen, nachdem
+  Sie Ihren Browser geschlossen haben.
 </p>
 <p>
   <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies">HTTP-Cookies</a>
@@ -85,8 +85,8 @@ Here is the translation of the provided content into German:
     href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API/Using_the_Web_Storage_API"
     >Web Storage</a
   >
-  ist eine alternative Technologie, um Informationen in Ihrem Browser zu speichern. Wir setzen diese
-  Informationen automatisch:
+  ist eine alternative Technologie, um Informationen in Ihrem Browser zu speichern. Wir setzen diese Informationen
+  automatisch:
 </p>
 <table>
   <thead>
@@ -146,8 +146,8 @@ Here is the translation of the provided content into German:
   Wir verwenden <a href="https://plausible.io/">Plausible</a>, ein datenschutzorientiertes
   Analysetool, um anonym zu verstehen, wie unsere Besucher
   <span class="notranslate">Welcome To My Garden</span> nutzen. Plausible ermöglicht es uns, die Anzahl
-  der Besucher auf unserer Website zu zählen, zu verstehen, welche Seiten am meisten besucht werden,
-  woher sie kommen und welche Aktionen die Benutzer auf unserer Seite ausführen.
+  der Besucher auf unserer Website zu zählen, zu verstehen, welche Seiten am meisten besucht werden, woher
+  sie kommen und welche Aktionen die Benutzer auf unserer Seite ausführen.
 </p>
 <p>
   Im Gegensatz zu vielen anderen Analyselösungen speichert Plausible
