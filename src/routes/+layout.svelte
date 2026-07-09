@@ -499,6 +499,12 @@
     /* No max-width on the map pages */
     max-width: unset;
   }
+  .app.active-every15km > :global(main) {
+    /* <main> is the containing block of the /every15km info box. Clip it so the
+       box's slide-in/out transform can't extend the scrollable .app and flash a
+       (content-shifting) scrollbar during the animation. */
+    overflow: hidden;
+  }
   /*
     If the chat page is active, make sure it expands to the full available height.
     It is designed to not overflow it. */
