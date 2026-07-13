@@ -5,11 +5,16 @@
   import { fileDataLayers } from '$lib/stores/file';
   import { getContext, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
+  import type { ExpressionSpecification, GeoJSONSource, Marker } from 'mapbox-gl';
+  import mapboxgl from 'mapbox-gl';
+  import { fileDataLayers } from '$lib/stores/file';
+  import { getContext, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { bbox } from '@turf/bbox';
   import key from './mapbox-context.js';
   import { ZOOM_LEVELS } from '$lib/constants';
   import type { FileDataLayer } from '$lib/types/DataLayer';
-  import type { FeatureCollection, LineString, Point } from 'geojson';
+  import type { FeatureCollection, LineString } from 'geojson';
   import {
     clusterEndpoints,
     colorForRoute,
@@ -18,8 +23,6 @@
     computeNonOverlapLinesByRoute,
     computeOverlapSegments,
     computeStartEnd,
-    evaluateKmZoomInterval,
-    KM_ZOOM_RULES,
     type RouteEndpoint
   } from '$lib/util/map/routeStyle';
   import * as Sentry from '@sentry/sveltekit';
@@ -28,23 +31,23 @@
   const { getMap } = getContext<ContextType>(key);
   const map = getMap();
 
-  const EMPTY_KM: FeatureCollection<Point, { label: string }> = {
-    type: 'FeatureCollection',
-    features: []
-  };
-
-  // Effective km marker interval for the current zoom level; `null` => no markers shown.
-  let effInterval: number | null = null;
-
-  const refreshEffectiveKmZoomInterval = () => {
-    effInterval = evaluateKmZoomInterval(KM_ZOOM_RULES, map.getZoom());
-  };
-
-  const generateKmMarkersFor = (geoJson: FileDataLayer['geoJson']) =>
-    effInterval != null ? computeKmMarkers(geoJson, effInterval) : EMPTY_KM;
-
-  // Km markers snap between fully visible and hidden at their zoom threshold.
-  const kmOpacity = () => (effInterval != null ? 1 : 0);
+  // Km markers are generated once at 1 km spacing (see computeKmMarkers) and tagged with
+  // `everyN` (the coarsest interval they belong to: 10, 5 or 1). This zoom-driven opacity
+  // expression then reveals every 10th / 5th / 1st marker as the map zooms in, and hides
+  // them all below zoom 8 — without ever re-uploading the marker data. `circle-opacity` /
+  // `text-opacity` are paint properties, so this is re-evaluated on every (even fractional)
+  // zoom change and snaps at the thresholds.
+  const KM_VISIBILITY: ExpressionSpecification = [
+    'step',
+    ['zoom'],
+    0,
+    8,
+    ['case', ['>=', ['get', 'everyN'], 10], 1, 0],
+    9.5,
+    ['case', ['>=', ['get', 'everyN'], 5], 1, 0],
+    11.5,
+    1
+  ];
 
   // Km marker background is fully white so the underlying map never shows through.
   const KM_BACKGROUND = 'rgba(255, 255, 255, 1)';
@@ -68,7 +71,6 @@
   const nameLabelId = (id: string) => `${id}__name`;
   const nameSourceId = (id: string) => `${id}__name-src`;
 
-  // ATTENTION: reactivity
   // Per-route geometry used for the name labels: the stretches where a route does NOT run
   // alongside another route, so file names are not shown along overlapping stretches.
   // Empty (or missing id) => fall back to the route's full geometry (no clipping needed).
@@ -104,7 +106,8 @@
     14,
     NAME_SPACING * 3
   ];
-  // ATTENTION: DON'T GET THIS
+  // Name font grows with zoom: 9px at zoom 6 (and below), 15px at zoom 12 (and above),
+  // linearly interpolated in between.
   const NAME_TEXT_SIZE: ExpressionSpecification = [
     'interpolate',
     ['linear'],
@@ -224,6 +227,7 @@
       map.addSource(id, { type: 'geojson', data: geoJson });
     } else {
       (map.getSource(id) as GeoJSONSource | undefined)?.setData(geoJson);
+      (map.getSource(id) as GeoJSONSource | undefined)?.setData(geoJson);
     }
 
     if (!map.getLayer(id)) {
@@ -243,7 +247,8 @@
     if (isNew && layer.animate) fitToTrail(geoJson);
 
     // --- Kilometre markers ---
-    const kmData = generateKmMarkersFor(geoJson);
+    // Generated once at 1 km spacing; the current zoom's subset is revealed by KM_VISIBILITY.
+    const kmData = computeKmMarkers(geoJson);
     if (!map.getSource(kmSourceId(id))) {
       map.addSource(kmSourceId(id), { type: 'geojson', data: kmData });
     } else {
@@ -258,16 +263,14 @@
         paint: {
           'circle-color': KM_BACKGROUND,
           'circle-radius': 9,
-          'circle-opacity': kmOpacity(),
+          'circle-opacity': KM_VISIBILITY,
           'circle-stroke-width': 1.5,
           'circle-stroke-color': color,
-          'circle-stroke-opacity': kmOpacity()
+          'circle-stroke-opacity': KM_VISIBILITY
         }
       });
     } else {
       map.setPaintProperty(kmCircleId(id), 'circle-stroke-color', color);
-      map.setPaintProperty(kmCircleId(id), 'circle-opacity', kmOpacity());
-      map.setPaintProperty(kmCircleId(id), 'circle-stroke-opacity', kmOpacity());
     }
 
     if (!map.getLayer(kmLabelId(id))) {
@@ -281,11 +284,10 @@
           'text-allow-overlap': true,
           'text-ignore-placement': true
         },
-        paint: { 'text-color': color, 'text-opacity': kmOpacity() }
+        paint: { 'text-color': color, 'text-opacity': KM_VISIBILITY }
       });
     } else {
       map.setPaintProperty(kmLabelId(id), 'text-color', color);
-      map.setPaintProperty(kmLabelId(id), 'text-opacity', kmOpacity());
     }
 
     // --- Route name label (on the route's non-overlapping stretches only) ---
@@ -489,7 +491,6 @@
 
   /** Full reconcile of the map against the current trails + tweaks state. */
   const sync = () => {
-    refreshEffectiveKmZoomInterval();
     const layers = get(fileDataLayers);
 
     const wantedIds = new Set(layers.map((layer) => layer.id));
@@ -513,32 +514,13 @@
   };
 
   /**
-   * On zoom: re-evaluate the effective km interval/opacity and update the km layers, the
-   * route-line transparency and the endpoint marker size. Marker data is only recomputed
-   * when the interval actually changes.
+   * On zoom: update the zoom-dependent route-line transparency and the endpoint marker size.
+   * (Km markers reveal themselves via the KM_VISIBILITY paint expression, so they need no
+   * per-zoom handling here.)
    */
   const onZoom = () => {
-    const prevInterval = effInterval;
-    refreshEffectiveKmZoomInterval();
-    const intervalChanged = prevInterval !== effInterval;
-
+    // Route-line transparency depends on the zoom level.
     rendered.forEach((id) => {
-      if (intervalChanged) {
-        const layer = get(fileDataLayers).find((l) => l.id === id);
-        if (layer) {
-          (map.getSource(kmSourceId(id)) as GeoJSONSource | undefined)?.setData(
-            generateKmMarkersFor(layer.geoJson)
-          );
-        }
-      }
-      if (map.getLayer(kmCircleId(id))) {
-        map.setPaintProperty(kmCircleId(id), 'circle-opacity', kmOpacity());
-        map.setPaintProperty(kmCircleId(id), 'circle-stroke-opacity', kmOpacity());
-      }
-      if (map.getLayer(kmLabelId(id))) {
-        map.setPaintProperty(kmLabelId(id), 'text-opacity', kmOpacity());
-      }
-      // Route-line transparency depends on the zoom level.
       if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', lineOpacity());
     });
 
@@ -573,7 +555,8 @@
 </script>
 
 <style>
-  /* The inline css classes get overwritten/cleared by mapbox I think */
+  /* Mapbox clears the inline `display` it sets on marker elements, so the endpoint
+     markers get their `display: flex` from here instead (see createEndpointElement). */
   :global(.mapboxgl-marker.trail-endpoint) {
     display: flex;
   }

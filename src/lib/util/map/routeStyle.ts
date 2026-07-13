@@ -13,7 +13,7 @@ import type { Feature, FeatureCollection, Geometry, LineString, Point, Position 
  * distinct, well-contrasting colours so that touching/overlapping routes can be told
  * apart. All are dark/saturated enough to stand out against the light green/yellow map.
  */
-export const ROUTE_COLORS = [
+const ROUTE_COLORS = [
   '#4b0082', // indigo (original dark purple)
   '#d7263d', // crimson red
   '#1565c0', // strong blue
@@ -47,7 +47,7 @@ const collectLines = (geometry: Geometry, out: Position[][]) => {
 };
 
 /** Extracts all usable line segments (>= 2 points) from a GeoJSON route. */
-export const extractLines = (geoJson: FeatureCollection | Feature): Position[][] => {
+const extractLines = (geoJson: FeatureCollection | Feature): Position[][] => {
   const out: Position[][] = [];
   const features = geoJson.type === 'FeatureCollection' ? geoJson.features : [geoJson];
   features.forEach((feature) => {
@@ -72,39 +72,38 @@ export const computeStartEnd = (
 };
 
 /**
- * Computes evenly-spaced kilometre markers along a route. Distances are accumulated
- * across consecutive line segments so labels stay continuous over multi-segment routes.
+ * Computes kilometre markers along a route at 1 km spacing (the finest interval shown).
+ * Distances are accumulated across consecutive line segments so labels stay continuous
+ * over multi-segment routes.
  *
- * @param intervalKm the spacing between markers, in kilometres
+ * Each marker carries `everyN`: the coarsest interval it belongs to (10 for multiples of
+ * 10 km, else 5 for multiples of 5, else 1). The map layer uses this to reveal every 10th /
+ * 5th / 1st marker as the user zoom in, without ever regenerating the marker data.
  */
 export const computeKmMarkers = (
-  geoJson: FeatureCollection | Feature,
-  intervalKm: number
-): FeatureCollection<Point, { label: string }> => {
-  const features: Feature<Point, { label: string }>[] = [];
+  geoJson: FeatureCollection | Feature
+): FeatureCollection<Point, { label: string; everyN: number }> => {
+  const features: Feature<Point, { label: string; everyN: number }>[] = [];
   const lines = extractLines(geoJson);
 
-  if (intervalKm > 0) {
-    const epsilon = 1e-9;
-    let cumulative = 0; // total distance covered before the current segment
-    let count = 1; // index of the next marker to place
-    for (const coords of lines) {
-      const ls = lineString(coords);
-      const segmentLength = length(ls, { units: 'kilometers' });
-      while (count * intervalKm <= cumulative + segmentLength + epsilon) {
-        const distanceOnSegment = Math.max(0, count * intervalKm - cumulative);
-        const point = along(ls, distanceOnSegment, { units: 'kilometers' });
-        const km = count * intervalKm;
-        const label = Number.isInteger(km) ? `${km}` : `${+km.toFixed(2)}`;
-        features.push({
-          type: 'Feature',
-          geometry: point.geometry,
-          properties: { label }
-        });
-        count++;
-      }
-      cumulative += segmentLength;
+  const epsilon = 1e-9;
+  let cumulative = 0; // total distance covered before the current segment
+  let km = 1; // next whole-kilometre mark to place
+  for (const coords of lines) {
+    const ls = lineString(coords);
+    const segmentLength = length(ls, { units: 'kilometers' });
+    while (km <= cumulative + segmentLength + epsilon) {
+      const distanceOnSegment = Math.max(0, km - cumulative);
+      const point = along(ls, distanceOnSegment, { units: 'kilometers' });
+      const everyN = km % 10 === 0 ? 10 : km % 5 === 0 ? 5 : 1;
+      features.push({
+        type: 'Feature',
+        geometry: point.geometry,
+        properties: { label: `${km}`, everyN }
+      });
+      km++;
     }
+    cumulative += segmentLength;
   }
 
   return { type: 'FeatureCollection', features };
@@ -148,10 +147,10 @@ export const clusterEndpoints = (
 };
 
 /** Zoom thresholds controlling start/end marker shrinking & fading. */
-export const ENDPOINT_FULL_ZOOM = 8.5; // at/above: full size
-export const ENDPOINT_SHRINK_FLOOR = 8.3; // 8.3–8.5: shrink down to ENDPOINT_MIN_SCALE
-export const ENDPOINT_FADE_END = 7.8; // 7.8–8.3: fade out over 0.5 zoom levels; below: hidden
-export const ENDPOINT_MIN_SCALE = 0.78; // smallest size markers ever reach (the size at zoom 8.3)
+const ENDPOINT_FULL_ZOOM = 8.5; // at/above: full size
+const ENDPOINT_SHRINK_FLOOR = 8.3; // 8.3–8.5: shrink down to ENDPOINT_MIN_SCALE
+const ENDPOINT_FADE_END = 7.8; // 7.8–8.3: fade out over 0.5 zoom levels; below: hidden
+const ENDPOINT_MIN_SCALE = 0.78; // smallest size markers ever reach (the size at zoom 8.3)
 
 /**
  * Computes the start/end marker scale & opacity for a zoom level:
@@ -174,16 +173,16 @@ export const computeEndpointStyle = (zoom: number): { scale: number; opacity: nu
 };
 
 /** A route paired with the colour it is drawn in on the map. */
-export type ColoredRoute = { color: string; geoJson: FeatureCollection | Feature };
+type ColoredRoute = { color: string; geoJson: FeatureCollection | Feature };
 
 /** Max distance (m) between two routes to count as following "the same path". */
-export const OVERLAP_THRESHOLD_M = 20;
+const OVERLAP_THRESHOLD_M = 20;
 /** Minimum sustained length (km) for a shared stretch to be treated as an overlap. */
-export const OVERLAP_MIN_LENGTH_KM = 0.1;
+const OVERLAP_MIN_LENGTH_KM = 0.1;
 /** Vertices closer than this (m) are dropped before scanning (accuracy vs. speed). */
-export const OVERLAP_DECIMATE_M = 10;
+const OVERLAP_DECIMATE_M = 10;
 /** Step (m) at which a route is sampled while scanning for overlaps. */
-export const OVERLAP_SAMPLE_M = 25;
+const OVERLAP_SAMPLE_M = 25;
 
 // --- Fast local planar geometry (accurate enough at the ~20 m scale) ---
 const M_PER_DEG_LAT = 111_320;
@@ -237,70 +236,145 @@ const isNearGrid = (grid: Map<string, [XY, XY][]>, p: XY, cell: number, thr2: nu
   return false;
 };
 
+// --- Shared route-scanning internals used by both overlap detectors below ---
+
+type PreppedLine = { ll: [number, number][]; xy: XY[] };
+type PreppedRoute = { lines: PreppedLine[]; grid: Map<string, [XY, XY][]> };
+type Sample = { near: boolean; ll: [number, number] };
+
+/** Latitude anchoring the local metre projection (from the first available vertex). */
+const referenceLatitude = (routes: { geoJson: FeatureCollection | Feature }[]) => {
+  for (const r of routes) {
+    const lines = extractLines(r.geoJson);
+    if (lines.length && lines[0].length) return lines[0][0][1];
+  }
+  return undefined;
+};
+
+/** Builds an equirectangular lng/lat → metres projection anchored at `lat0`. */
+const makeProjector = (lat0: number) => {
+  const kx = M_PER_DEG_LAT * Math.cos((lat0 * Math.PI) / 180);
+  return (lng: number, lat: number): XY => [lng * kx, lat * M_PER_DEG_LAT];
+};
+
+/**
+ * Decimates a route's vertices, projects them to metres and indexes its segments in a
+ * uniform grid for fast proximity queries. Retains both the lng/lat (`ll`) and projected
+ * (`xy`) coordinates of every kept vertex.
+ */
+const prepRoute = (
+  geoJson: FeatureCollection | Feature,
+  project: (lng: number, lat: number) => XY
+): PreppedRoute => {
+  const decimate2 = OVERLAP_DECIMATE_M * OVERLAP_DECIMATE_M;
+  const lines: PreppedLine[] = [];
+  const segments: [XY, XY][] = [];
+  for (const coords of extractLines(geoJson)) {
+    const ll: [number, number][] = [];
+    const xy: XY[] = [];
+    let last: XY | null = null;
+    for (let idx = 0; idx < coords.length; idx++) {
+      const lng = coords[idx][0];
+      const lat = coords[idx][1];
+      const p = project(lng, lat);
+      const keep =
+        idx === 0 ||
+        idx === coords.length - 1 ||
+        !last ||
+        (p[0] - last[0]) ** 2 + (p[1] - last[1]) ** 2 >= decimate2;
+      if (keep) {
+        ll.push([lng, lat]);
+        xy.push(p);
+        last = p;
+      }
+    }
+    if (xy.length >= 2) {
+      lines.push({ ll, xy });
+      for (let s = 0; s < xy.length - 1; s++) segments.push([xy[s], xy[s + 1]]);
+    }
+  }
+  return { lines, grid: makeSegmentGrid(segments, OVERLAP_THRESHOLD_M) };
+};
+
+/**
+ * Walks a prepped line, sampling every `OVERLAP_SAMPLE_M` metres. Each sample records its
+ * lng/lat and whether `isNear` (given the sample's projected position) holds there.
+ */
+const sampleLine = (line: PreppedLine, isNear: (p: XY) => boolean): Sample[] => {
+  const samples: Sample[] = [];
+  let acc = 0;
+  let next = 0;
+  for (let k = 0; k < line.xy.length - 1; k++) {
+    const p0 = line.xy[k];
+    const p1 = line.xy[k + 1];
+    const l0 = line.ll[k];
+    const l1 = line.ll[k + 1];
+    const segLen = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    if (segLen === 0) continue;
+    while (next <= acc + segLen + 1e-6) {
+      const t = (next - acc) / segLen;
+      const p: XY = [p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])];
+      samples.push({
+        near: isNear(p),
+        ll: [l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])]
+      });
+      next += OVERLAP_SAMPLE_M;
+    }
+    acc += segLen;
+  }
+  return samples;
+};
+
+/**
+ * Extracts the lng/lat of each maximal run of samples whose `near` flag equals `wantNear`,
+ * keeping only runs at least `minLengthM` long (pass 0 to keep every run).
+ */
+const runsToCoordinates = (
+  samples: Sample[],
+  wantNear: boolean,
+  minLengthM: number
+): [number, number][][] => {
+  const runs: [number, number][][] = [];
+  let start = -1;
+  for (let k = 0; k < samples.length; k++) {
+    const match = samples[k].near === wantNear;
+    const last = k === samples.length - 1;
+    if (match && start < 0) start = k;
+    if ((!match || last) && start >= 0) {
+      const endIdx = match ? k : k - 1;
+      if ((endIdx - start) * OVERLAP_SAMPLE_M >= minLengthM) {
+        const coordinates = samples.slice(start, endIdx + 1).map((s) => s.ll);
+        if (coordinates.length >= 2) runs.push(coordinates);
+      }
+      start = -1;
+    }
+  }
+  return runs;
+};
+
 /**
  * Detects stretches where two routes follow (roughly) the same path — not merely
  * crossing, but staying within `OVERLAP_THRESHOLD_M` of each other for at least
  * `OVERLAP_MIN_LENGTH_KM`. Each detected stretch is returned as a LineString carrying
  * the two routes' colours, so it can be drawn as an alternating two-colour line.
  *
- * Optimised for speed (this is the only heavy path, and runs only in overlap mode):
- * routes are decimated, projected to a local metric plane, indexed in a uniform grid,
- * and scanned in a single linear pass — turning the naive O(pairs × samples × vertices)
- * scan into ~O(vertices + samples).
+ * Optimised for speed (this is the heaviest path): routes are decimated, projected to a
+ * local metric plane, indexed in a uniform grid, and scanned in a single linear pass —
+ * turning the naive O(pairs × samples × vertices) scan into ~O(vertices + samples).
  */
 export const computeOverlapSegments = (
   routes: ColoredRoute[]
 ): FeatureCollection<LineString, { colorA: string; colorB: string }> => {
   const features: Feature<LineString, { colorA: string; colorB: string }>[] = [];
 
-  // Reference latitude for the local projection (from the first available vertex).
-  let lat0: number | undefined;
-  for (const r of routes) {
-    const lines = extractLines(r.geoJson);
-    if (lines.length && lines[0].length) {
-      lat0 = lines[0][0][1];
-      break;
-    }
-  }
+  const lat0 = referenceLatitude(routes);
   if (lat0 === undefined) return { type: 'FeatureCollection', features };
+  const project = makeProjector(lat0);
 
-  const kx = M_PER_DEG_LAT * Math.cos((lat0 * Math.PI) / 180);
-  const project = (lng: number, lat: number): XY => [lng * kx, lat * M_PER_DEG_LAT];
-
-  // Preprocess each route: decimate vertices, project to metres, and index its segments.
-  const decimate2 = OVERLAP_DECIMATE_M * OVERLAP_DECIMATE_M;
-  const prepped = routes.map((r) => {
-    const lines: { ll: [number, number][]; xy: XY[] }[] = [];
-    const segments: [XY, XY][] = [];
-    for (const coords of extractLines(r.geoJson)) {
-      const ll: [number, number][] = [];
-      const xy: XY[] = [];
-      let last: XY | null = null;
-      for (let idx = 0; idx < coords.length; idx++) {
-        const lng = coords[idx][0];
-        const lat = coords[idx][1];
-        const p = project(lng, lat);
-        const keep =
-          idx === 0 ||
-          idx === coords.length - 1 ||
-          !last ||
-          (p[0] - last[0]) ** 2 + (p[1] - last[1]) ** 2 >= decimate2;
-        if (keep) {
-          ll.push([lng, lat]);
-          xy.push(p);
-          last = p;
-        }
-      }
-      if (xy.length >= 2) {
-        lines.push({ ll, xy });
-        for (let s = 0; s < xy.length - 1; s++) segments.push([xy[s], xy[s + 1]]);
-      }
-    }
-    return { color: r.color, lines, grid: makeSegmentGrid(segments, OVERLAP_THRESHOLD_M) };
-  });
+  const prepped = routes.map((r) => ({ color: r.color, ...prepRoute(r.geoJson, project) }));
 
   const thr2 = OVERLAP_THRESHOLD_M * OVERLAP_THRESHOLD_M;
-  const minLenM = OVERLAP_MIN_LENGTH_KM * 1000;
+  const minLengthM = OVERLAP_MIN_LENGTH_KM * 1000;
 
   for (let i = 0; i < prepped.length; i++) {
     for (let j = i + 1; j < prepped.length; j++) {
@@ -309,49 +383,13 @@ export const computeOverlapSegments = (
       if (!a.lines.length || !b.lines.length) continue;
 
       for (const line of a.lines) {
-        // Single linear walk of the line, sampling every OVERLAP_SAMPLE_M metres and
-        // testing proximity to route B via its grid; collect runs of "near" samples.
-        const samples: { near: boolean; ll: [number, number] }[] = [];
-        let acc = 0;
-        let next = 0;
-        for (let k = 0; k < line.xy.length - 1; k++) {
-          const p0 = line.xy[k];
-          const p1 = line.xy[k + 1];
-          const l0 = line.ll[k];
-          const l1 = line.ll[k + 1];
-          const segLen = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
-          if (segLen === 0) continue;
-          while (next <= acc + segLen + 1e-6) {
-            const t = (next - acc) / segLen;
-            const p: XY = [p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])];
-            samples.push({
-              near: isNearGrid(b.grid, p, OVERLAP_THRESHOLD_M, thr2),
-              ll: [l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])]
-            });
-            next += OVERLAP_SAMPLE_M;
-          }
-          acc += segLen;
-        }
-
-        let start = -1;
-        for (let k = 0; k < samples.length; k++) {
-          const near = samples[k].near;
-          const last = k === samples.length - 1;
-          if (near && start < 0) start = k;
-          if ((!near || last) && start >= 0) {
-            const endIdx = near ? k : k - 1;
-            if ((endIdx - start) * OVERLAP_SAMPLE_M >= minLenM) {
-              const coordinates = samples.slice(start, endIdx + 1).map((s) => s.ll);
-              if (coordinates.length >= 2) {
-                features.push({
-                  type: 'Feature',
-                  geometry: { type: 'LineString', coordinates },
-                  properties: { colorA: a.color, colorB: b.color }
-                });
-              }
-            }
-            start = -1;
-          }
+        const samples = sampleLine(line, (p) => isNearGrid(b.grid, p, OVERLAP_THRESHOLD_M, thr2));
+        for (const coordinates of runsToCoordinates(samples, true, minLengthM)) {
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates },
+            properties: { colorA: a.color, colorB: b.color }
+          });
         }
       }
     }
@@ -376,53 +414,14 @@ export const computeNonOverlapLinesByRoute = (
 ): Map<string, FeatureCollection<LineString>> => {
   const result = new Map<string, FeatureCollection<LineString>>();
 
-  // Reference latitude for the local projection (from the first available vertex).
-  let lat0: number | undefined;
-  for (const r of routes) {
-    const lines = extractLines(r.geoJson);
-    if (lines.length && lines[0].length) {
-      lat0 = lines[0][0][1];
-      break;
-    }
-  }
+  const lat0 = referenceLatitude(routes);
   if (lat0 === undefined) {
     routes.forEach((r) => result.set(r.id, { type: 'FeatureCollection', features: [] }));
     return result;
   }
+  const project = makeProjector(lat0);
 
-  const kx = M_PER_DEG_LAT * Math.cos((lat0 * Math.PI) / 180);
-  const project = (lng: number, lat: number): XY => [lng * kx, lat * M_PER_DEG_LAT];
-
-  const decimate2 = OVERLAP_DECIMATE_M * OVERLAP_DECIMATE_M;
-  const prepped = routes.map((r) => {
-    const lines: { ll: [number, number][]; xy: XY[] }[] = [];
-    const segments: [XY, XY][] = [];
-    for (const coords of extractLines(r.geoJson)) {
-      const ll: [number, number][] = [];
-      const xy: XY[] = [];
-      let last: XY | null = null;
-      for (let idx = 0; idx < coords.length; idx++) {
-        const lng = coords[idx][0];
-        const lat = coords[idx][1];
-        const p = project(lng, lat);
-        const keep =
-          idx === 0 ||
-          idx === coords.length - 1 ||
-          !last ||
-          (p[0] - last[0]) ** 2 + (p[1] - last[1]) ** 2 >= decimate2;
-        if (keep) {
-          ll.push([lng, lat]);
-          xy.push(p);
-          last = p;
-        }
-      }
-      if (xy.length >= 2) {
-        lines.push({ ll, xy });
-        for (let s = 0; s < xy.length - 1; s++) segments.push([xy[s], xy[s + 1]]);
-      }
-    }
-    return { id: r.id, lines, grid: makeSegmentGrid(segments, OVERLAP_THRESHOLD_M) };
-  });
+  const prepped = routes.map((r) => ({ id: r.id, ...prepRoute(r.geoJson, project) }));
 
   const thr2 = OVERLAP_THRESHOLD_M * OVERLAP_THRESHOLD_M;
 
@@ -432,48 +431,17 @@ export const computeNonOverlapLinesByRoute = (
     const features: Feature<LineString>[] = [];
 
     for (const line of self.lines) {
-      // Sample the line every OVERLAP_SAMPLE_M metres; a sample is "near" when it is
-      // within the overlap threshold of ANY other route.
-      const samples: { near: boolean; ll: [number, number] }[] = [];
-      let acc = 0;
-      let next = 0;
-      for (let k = 0; k < line.xy.length - 1; k++) {
-        const p0 = line.xy[k];
-        const p1 = line.xy[k + 1];
-        const l0 = line.ll[k];
-        const l1 = line.ll[k + 1];
-        const segLen = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
-        if (segLen === 0) continue;
-        while (next <= acc + segLen + 1e-6) {
-          const t = (next - acc) / segLen;
-          const p: XY = [p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])];
-          samples.push({
-            near: others.some((o) => isNearGrid(o.grid, p, OVERLAP_THRESHOLD_M, thr2)),
-            ll: [l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])]
-          });
-          next += OVERLAP_SAMPLE_M;
-        }
-        acc += segLen;
-      }
-
-      // Collect maximal runs of "far" (non-overlapping) samples as LineStrings.
-      let start = -1;
-      for (let k = 0; k < samples.length; k++) {
-        const far = !samples[k].near;
-        const last = k === samples.length - 1;
-        if (far && start < 0) start = k;
-        if ((!far || last) && start >= 0) {
-          const endIdx = far ? k : k - 1;
-          const coordinates = samples.slice(start, endIdx + 1).map((s) => s.ll);
-          if (coordinates.length >= 2) {
-            features.push({
-              type: 'Feature',
-              geometry: { type: 'LineString', coordinates },
-              properties: {}
-            });
-          }
-          start = -1;
-        }
+      // A sample is "near" when it is within the overlap threshold of ANY other route;
+      // the non-overlapping stretches are the maximal runs of "far" samples.
+      const samples = sampleLine(line, (p) =>
+        others.some((o) => isNearGrid(o.grid, p, OVERLAP_THRESHOLD_M, thr2))
+      );
+      for (const coordinates of runsToCoordinates(samples, false, 0)) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates },
+          properties: {}
+        });
       }
     }
 
@@ -481,39 +449,4 @@ export const computeNonOverlapLinesByRoute = (
   }
 
   return result;
-};
-
-/** A zoom→interval rule: at zoom in `[min, max)` the km marker interval is `interval` km. */
-export type IntervalRule = { min: number; max: number | null; interval: number };
-
-/** Km markers stay visible this many zoom levels below the lowest rule's `min`. */
-export const ZOOM_BUFFER_BELOW_LOWEST = 0.5;
-
-/** Zoom → km interval rules for the km markers, ordered from most to least zoomed-in.
- * Beyond the least zoomed rule (minus `ZOOM_BUFFER_BELOW_LOWEST`), markers are hidden.
- */
-export const KM_ZOOM_RULES: IntervalRule[] = [
-  { min: 11.5, max: null, interval: 1 },
-  { min: 9.5, max: 11.5, interval: 5 },
-  { min: 8.5, max: 9.5, interval: 10 }
-];
-
-/**
- * Determines the km marker interval for the given zoom level, based on the rules.
- * Returns `null` when no markers should be shown at all.
- */
-export const evaluateKmZoomInterval = (
-  rules: IntervalRule[],
-  zoom: number,
-  buffer = ZOOM_BUFFER_BELOW_LOWEST
-): number | null => {
-  if (rules.length === 0) return null;
-  const sorted = [...rules].sort((a, b) => a.min - b.min);
-
-  for (const r of sorted) {
-    if (zoom >= r.min && (r.max === null || zoom < r.max)) return r.interval;
-  }
-
-  const lowest = sorted[0];
-  return zoom >= lowest.min - buffer ? lowest.interval : null;
 };
