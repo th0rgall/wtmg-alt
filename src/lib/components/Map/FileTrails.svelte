@@ -29,21 +29,44 @@
   const map = getMap();
 
   // Km markers are generated once at 1 km spacing (see computeKmMarkers) and tagged with
-  // `everyN` (the coarsest interval they belong to: 10, 5 or 1). This zoom-driven opacity
-  // expression then reveals every 10th / 5th / 1st marker as the map zooms in, and hides
-  // them all below zoom 8 — without ever re-uploading the marker data. `circle-opacity` /
-  // `text-opacity` are paint properties, so this is re-evaluated on every (even fractional)
-  // zoom change and snaps at the thresholds.
+  // `everyN` (the coarsest interval they belong to: 10, 5 or 1). Zoom-driven `step`
+  // expressions then reveal every 10th / 5th / 1st marker as the map zooms in, and hide them
+  // all below zoom 8 — without ever re-uploading the marker data.
+  //
+  // Reveal thresholds are INTEGER zoom levels on purpose. The circle uses a paint-opacity
+  // step (re-evaluated per frame, snaps at the threshold), but the label must NOT use
+  // paint opacity: symbol layers only sample paint opacity at integer zoom stops and
+  // interpolate between them, so a fractional threshold (e.g. 9.5) makes the digits linger
+  // half-transparent across a whole integer band while the circle is still hidden. Instead
+  // the label is revealed via its `text-field` (a layout property, re-evaluated on integer
+  // zoom change) that returns '' while hidden. Keeping both on the same integer thresholds
+  // makes the digits snap in together with their circle.
+  const KM_ZOOM_10 = 8; // every 10th km marker appears here
+  const KM_ZOOM_5 = 10; // every 5th (and 10th) from here
+  const KM_ZOOM_1 = 12; // every km from here
   const KM_VISIBILITY: ExpressionSpecification = [
     'step',
     ['zoom'],
     0,
-    8,
+    KM_ZOOM_10,
     ['case', ['>=', ['get', 'everyN'], 10], 1, 0],
-    9.5,
+    KM_ZOOM_5,
     ['case', ['>=', ['get', 'everyN'], 5], 1, 0],
-    11.5,
+    KM_ZOOM_1,
     1
+  ];
+  // Same reveal schedule as KM_VISIBILITY, but as a text-field value: the label string when
+  // the marker should show at the current zoom, otherwise '' (nothing rendered).
+  const KM_LABEL_FIELD: ExpressionSpecification = [
+    'step',
+    ['zoom'],
+    '',
+    KM_ZOOM_10,
+    ['case', ['>=', ['get', 'everyN'], 10], ['get', 'label'], ''],
+    KM_ZOOM_5,
+    ['case', ['>=', ['get', 'everyN'], 5], ['get', 'label'], ''],
+    KM_ZOOM_1,
+    ['get', 'label']
   ];
 
   // Km marker background is fully white so the underlying map never shows through.
@@ -276,12 +299,13 @@
         type: 'symbol',
         source: kmSourceId(id),
         layout: {
-          'text-field': ['get', 'label'],
+          // Reveal via the (layout) text-field, not paint opacity — see KM_LABEL_FIELD.
+          'text-field': KM_LABEL_FIELD,
           'text-size': KM_TEXT_SIZE,
           'text-allow-overlap': true,
           'text-ignore-placement': true
         },
-        paint: { 'text-color': color, 'text-opacity': KM_VISIBILITY }
+        paint: { 'text-color': color }
       });
     } else {
       map.setPaintProperty(kmLabelId(id), 'text-color', color);
