@@ -13,16 +13,14 @@
   import key from './mapbox-context.js';
   import { ZOOM_LEVELS } from '$lib/constants';
   import type { FileDataLayer } from '$lib/types/DataLayer';
-  import type { FeatureCollection, LineString, Point } from 'geojson';
+  import type { FeatureCollection, Point } from 'geojson';
   import {
     clusterEndpoints,
     colorForRoute,
     computeKmMarkers,
-    computeNonOverlapLinesByRoute,
-    computeOverlapSegments,
     computeStartEnd,
     type RouteEndpoint
-  } from '$lib/util/map/routeStyle';
+  } from '$lib/util/map/util';
   import { ENDPOINT_ICONS, ensureEndpointIcons } from './endpointIcon';
   import * as Sentry from '@sentry/sveltekit';
   import logger from '$lib/util/logger';
@@ -55,13 +53,9 @@
   // at the route in detail (so the underlying road stays visible); fully opaque below that.
   const ROUTE_OPACITY = 0.8;
   const ROUTE_OPACITY_TRANSPARENT = 0.45;
-  const OVERLAP_OPACITY = 0.9;
-  const OVERLAP_OPACITY_TRANSPARENT = 0.5;
   const TRANSPARENT_MIN_ZOOM = ZOOM_LEVELS.ROAD; // "looking at the route in detail"
   const routesTransparentNow = () => map.getZoom() >= TRANSPARENT_MIN_ZOOM;
   const lineOpacity = () => (routesTransparentNow() ? ROUTE_OPACITY_TRANSPARENT : ROUTE_OPACITY);
-  const overlapOpacity = () =>
-    routesTransparentNow() ? OVERLAP_OPACITY_TRANSPARENT : OVERLAP_OPACITY;
 
   // Layer/source id helpers (the base `id` stays the line layer/source, for backwards compat).
   const kmSourceId = (id: string) => `${id}__km`;
@@ -69,11 +63,6 @@
   const kmLabelId = (id: string) => `${id}__km-label`;
   const nameLabelId = (id: string) => `${id}__name`;
   const nameSourceId = (id: string) => `${id}__name-src`;
-
-  // Per-route geometry used for the name labels: the stretches where a route does NOT run
-  // alongside another route, so file names are not shown along overlapping stretches.
-  // Empty (or missing id) => fall back to the route's full geometry (no clipping needed).
-  let nameLinesByRoute = new Map<string, FeatureCollection<LineString>>();
 
   // Km label text: slightly smaller for labels with more than 2 digits (> 99) so the
   // number still fits inside the marker.
@@ -91,9 +80,9 @@
     (layer.originalFileName ?? '').replace(/\.[^./\\]+$/, '');
 
   // --- Route name labels ---
-  // Names are placed alongside each route's non-overlapping stretches: repeated along the
-  // route (`line`, so they follow the curvature) but offset to the side with some spacing,
-  // a slightly larger font and a slightly bigger white outline for readability.
+  // Names are placed alongside each route: repeated along the route (`line`, so they follow
+  // the curvature) but offset to the side with some spacing, a slightly larger font and a
+  // slightly bigger white outline for readability.
   const NAME_SPACING = 250;
   const NAME_HALO_WIDTH = 2.5;
   // Triple the gap between repeated names once zoomed in past ~15, so they don't repeat
@@ -298,9 +287,9 @@
       map.setPaintProperty(kmLabelId(id), 'text-color', color);
     }
 
-    // --- Route name label (on the route's non-overlapping stretches only) ---
+    // --- Route name label (drawn along the full route) ---
     const routeName = routeNameFor(layer);
-    const nameData = nameLinesByRoute.get(id) ?? geoJson;
+    const nameData = geoJson;
     if (!map.getSource(nameSourceId(id))) {
       map.addSource(nameSourceId(id), { type: 'geojson', data: nameData });
     } else {
@@ -320,8 +309,8 @@
           'text-offset': NAME_OFFSET,
           'text-max-angle': NAME_MAX_ANGLE,
           'text-keep-upright': true,
-          // Keep the name reliably visible along the route's (non-overlapping) stretches
-          // rather than letting collision with base-map labels drop it.
+          // Keep the name reliably visible along the route rather than letting collision
+          // with base-map labels drop it.
           'text-allow-overlap': true,
           'text-ignore-placement': true
         },
@@ -374,128 +363,26 @@
     if (map.getLayer(layerId)) map.moveLayer(layerId, gardenFloorLayerId());
   };
 
-  // Shared-segment overlap layers.
-  const OVERLAP_SOURCE = '__route-overlaps';
-  const OVERLAP_LAYER_A = '__route-overlaps-a';
-  const OVERLAP_LAYER_B = '__route-overlaps-b';
-
-  // Signature of the inputs the last overlap computation was based on, so the (expensive)
-  // scan is skipped when nothing relevant changed.
-  let lastOverlapSig = '';
-
-  const removeOverlapLayers = () => {
-    [OVERLAP_LAYER_B, OVERLAP_LAYER_A].forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
-    });
-    if (map.getSource(OVERLAP_SOURCE)) map.removeSource(OVERLAP_SOURCE);
-    lastOverlapSig = '';
-  };
-
-  /**
-   * Detects where routes share the same path and draws those stretches as a single line
-   * alternating the two routes' colours (solid colour A + dashed colour B on top).
-   */
-  const applyOverlaps = () => {
-    // Keep the overlap-line opacity in sync with the current zoom (transparent when
-    // zoomed in). Done before the signature short-circuit below.
-    if (map.getLayer(OVERLAP_LAYER_A)) {
-      map.setPaintProperty(OVERLAP_LAYER_A, 'line-opacity', overlapOpacity());
-    }
-    if (map.getLayer(OVERLAP_LAYER_B)) {
-      map.setPaintProperty(OVERLAP_LAYER_B, 'line-opacity', overlapOpacity());
-    }
-
-    const routes = get(fileDataLayers)
-      .map((layer, index) => ({
-        id: layer.id,
-        color: colorForRoute(index),
-        geoJson: layer.geoJson,
-        visible: layer.visible !== false
-      }))
-      .filter((r) => r.visible);
-
-    // Recompute only when the routes or their colours actually changed.
-    const sig = routes.map((r) => `${r.id}:${r.color}`).join(',');
-    if (sig === lastOverlapSig && map.getSource(OVERLAP_SOURCE)) return;
-    lastOverlapSig = sig;
-
-    const data = computeOverlapSegments(routes);
-
-    if (!map.getSource(OVERLAP_SOURCE)) {
-      map.addSource(OVERLAP_SOURCE, { type: 'geojson', data });
-    } else {
-      (map.getSource(OVERLAP_SOURCE) as GeoJSONSource | undefined)?.setData(data);
-    }
-
-    if (!map.getLayer(OVERLAP_LAYER_A)) {
-      map.addLayer({
-        id: OVERLAP_LAYER_A,
-        type: 'line',
-        source: OVERLAP_SOURCE,
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-width': 7,
-          'line-color': ['get', 'colorA'],
-          'line-opacity': overlapOpacity()
-        }
-      });
-    }
-    if (!map.getLayer(OVERLAP_LAYER_B)) {
-      map.addLayer({
-        id: OVERLAP_LAYER_B,
-        type: 'line',
-        source: OVERLAP_SOURCE,
-        layout: { 'line-join': 'round', 'line-cap': 'butt' },
-        paint: {
-          'line-width': 7,
-          'line-color': ['get', 'colorB'],
-          'line-opacity': overlapOpacity(),
-          'line-dasharray': [2, 2]
-        }
-      });
-    }
-  };
-
   const currentTrailIds = () =>
     get(fileDataLayers)
       .map((layer) => layer.id)
       .filter((id) => map.getLayer(id));
 
   /**
-   * Stacks the layers: route lines at the bottom, then the overlap lines, then all km
-   * markers, route names and start/end badges on top (kept below the garden layers).
-   * This keeps the km markers, names & badges readable wherever routes overlap.
+   * Stacks the layers: route lines at the bottom (oldest → newest, so the most recently
+   * uploaded route sits on top of older ones), then all km markers, route names and
+   * start/end badges above every route line (kept below the garden layers). This keeps the
+   * km markers, names & badges readable wherever routes cross or overlap.
    */
   const applyLayerOrder = () => {
+    // currentTrailIds() follows the store order, which is sorted oldest → newest, so moving
+    // each up in turn leaves the most recently uploaded route line topmost.
     const ids = currentTrailIds();
     ids.forEach((id) => moveToTop(id));
-    moveToTop(OVERLAP_LAYER_A);
-    moveToTop(OVERLAP_LAYER_B);
     ids.forEach((id) => moveToTop(nameLabelId(id)));
     ids.forEach((id) => moveToTop(kmCircleId(id)));
     ids.forEach((id) => moveToTop(kmLabelId(id)));
     moveToTop(ENDPOINT_LAYER);
-  };
-
-  // Signature of the visible routes the name-line clipping was last computed for, so the
-  // (expensive) scan is skipped when unrelated tweaks change.
-  let lastNameSig = '';
-
-  /**
-   * Recomputes, per route, the non-overlapping stretches used for the name labels — only
-   * when there is more than one visible route (otherwise no overlap is possible and the
-   * full route geometry is used).
-   */
-  const refreshNameLines = (layers: FileDataLayer[]) => {
-    const visible = layers.filter((layer) => layer.visible !== false);
-    const sig = visible.length >= 2 ? visible.map((layer) => layer.id).join(',') : '';
-    if (sig === lastNameSig) return;
-    lastNameSig = sig;
-    nameLinesByRoute = sig
-      ? computeNonOverlapLinesByRoute(
-          visible.map((layer) => ({ id: layer.id, geoJson: layer.geoJson }))
-        )
-      : new Map();
   };
 
   /** Full reconcile of the map against the current trails + tweaks state. */
@@ -508,37 +395,26 @@
       if (!wantedIds.has(id)) removeTrail(id);
     });
 
-    // Clip name-label geometry to non-overlapping stretches before (re)rendering trails.
-    refreshNameLines(layers);
-
     // Add/update remaining trails. Index (upload order) drives the alternating colour.
     layers.forEach((layer, index) => renderTrail(layer, colorForRoute(index)));
 
     // Rebuild the global (clustered) start/end badges from the current state.
     rebuildEndpoints();
 
-    // Build/refresh shared-segment overlap layers, then stack everything.
-    applyOverlaps();
+    // Stack everything (km markers & badges on top of all route lines).
     applyLayerOrder();
   };
 
   /**
-   * On zoom: update only the zoom-dependent route-line and overlap-line transparency.
-   * (Km markers and start/end badges reveal themselves via their KM_VISIBILITY /
-   * ENDPOINT_VISIBILITY paint expressions, so they need no per-zoom handling here.)
+   * On zoom: update only the zoom-dependent route-line transparency. (Km markers and
+   * start/end badges reveal themselves via their KM_VISIBILITY / ENDPOINT_VISIBILITY paint
+   * expressions, so they need no per-zoom handling here.)
    */
   const onZoom = () => {
     // Route-line transparency depends on the zoom level.
     rendered.forEach((id) => {
       if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', lineOpacity());
     });
-
-    if (map.getLayer(OVERLAP_LAYER_A)) {
-      map.setPaintProperty(OVERLAP_LAYER_A, 'line-opacity', overlapOpacity());
-    }
-    if (map.getLayer(OVERLAP_LAYER_B)) {
-      map.setPaintProperty(OVERLAP_LAYER_B, 'line-opacity', overlapOpacity());
-    }
   };
 
   map.on('zoom', onZoom);
@@ -551,7 +427,6 @@
     // Guard against the map having been torn down already (e.g. on navigation away).
     try {
       removeEndpointLayer();
-      removeOverlapLayers();
       [...rendered].forEach(removeTrail);
     } catch {
       // The map/style is gone; nothing left to clean up.

@@ -4,7 +4,7 @@
   import { LabeledCheckbox, MultiActionLabel, Button, Icon } from '$lib/components/UI';
   import { cyclistIcon, hikerIcon, routesIcon } from '$lib/images/icons';
   import { fileDataLayers } from '$lib/stores/file';
-  import { colorForRoute } from '$lib/util/map/routeStyle';
+  import { colorForRoute } from '$lib/util/map/util';
   import { cleanName } from '$lib/util/slugify';
   import { onDestroy } from 'svelte';
   import { deleteTrail, toggleTrailVisibility } from '$lib/api/trail';

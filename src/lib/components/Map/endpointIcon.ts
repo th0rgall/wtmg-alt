@@ -6,7 +6,7 @@
  * of being drawn as (impossible) two half-circles.
  */
 import type { Map } from 'mapbox-gl';
-import type { RouteEndpoint } from '$lib/util/map/routeStyle';
+import type { RouteEndpoint } from '$lib/util/map/util';
 
 /** Registered map-image ids for the three badge variants. */
 export const ENDPOINT_ICONS = {
