@@ -80,12 +80,13 @@
   const routesTransparentNow = () => map.getZoom() >= TRANSPARENT_MIN_ZOOM;
   const lineOpacity = () => (routesTransparentNow() ? ROUTE_OPACITY_TRANSPARENT : ROUTE_OPACITY);
 
-  // Layer/source id helpers (the base `id` stays the line layer/source, for backwards compat).
+  // Layer/source id helpers. The base `id` is the line layer/source (kept for backwards
+  // compat); it also backs the name label, which draws along the same line geometry, so no
+  // separate name source is needed.
   const kmSourceId = (id: string) => `${id}__km`;
   const kmCircleId = (id: string) => `${id}__km-circle`;
   const kmLabelId = (id: string) => `${id}__km-label`;
   const nameLabelId = (id: string) => `${id}__name`;
-  const nameSourceId = (id: string) => `${id}__name-src`;
 
   // Km label text: slightly smaller for labels with more than 2 digits (> 99) so the
   // number still fits inside the marker.
@@ -312,19 +313,13 @@
     }
 
     // --- Route name label (drawn along the full route) ---
+    // Reuses the base line source (`id`) — same geometry, no need for a second copy.
     const routeName = routeNameFor(layer);
-    const nameData = geoJson;
-    if (!map.getSource(nameSourceId(id))) {
-      map.addSource(nameSourceId(id), { type: 'geojson', data: nameData });
-    } else {
-      (map.getSource(nameSourceId(id)) as GeoJSONSource | undefined)?.setData(nameData);
-    }
-
     if (!map.getLayer(nameLabelId(id))) {
       map.addLayer({
         id: nameLabelId(id),
         type: 'symbol',
-        source: nameSourceId(id),
+        source: id,
         layout: {
           'symbol-placement': 'line',
           'symbol-spacing': NAME_SPACING_EXPR,
@@ -361,7 +356,6 @@
     [nameLabelId(id), kmLabelId(id), kmCircleId(id), id].forEach((layerId) => {
       if (map.getLayer(layerId)) map.removeLayer(layerId);
     });
-    if (map.getSource(nameSourceId(id))) map.removeSource(nameSourceId(id));
     if (map.getSource(kmSourceId(id))) map.removeSource(kmSourceId(id));
     if (map.getSource(id)) map.removeSource(id);
 
