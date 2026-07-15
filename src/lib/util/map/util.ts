@@ -3,7 +3,7 @@
  *
  * NOTE: part of a temporary prototype for route file display enhancements.
  */
-import { along, distance, flatten, length, lineString } from '@turf/turf';
+import { bearing, destination, distance, flatten } from '@turf/turf';
 import type { Feature, FeatureCollection, LineString, Point, Position } from 'geojson';
 
 /**
@@ -72,23 +72,38 @@ export const computeKmMarkers = (
   const lines = flattenToLines(geoJson);
 
   const epsilon = 1e-9;
-  let cumulative = 0; // total distance covered before the current segment
+  let cumulative = 0; // total distance covered up to the current vertex
   let km = 1; // next whole-kilometre mark to place
+
+  // Single pass over every segment of every line: we walk each vertex-to-vertex
+  // segment exactly once, measuring its length, and drop every whole-km mark that
+  // falls inside it before moving on. (Turf's `along` would re-walk the line from
+  // the start for each marker, making the whole thing quadratic on long routes.)
   for (const coords of lines) {
-    const ls = lineString(coords);
-    const segmentLength = length(ls, { units: 'kilometers' });
-    while (km <= cumulative + segmentLength + epsilon) {
-      const distanceOnSegment = Math.max(0, km - cumulative);
-      const point = along(ls, distanceOnSegment, { units: 'kilometers' });
-      const everyN = km % 10 === 0 ? 10 : km % 5 === 0 ? 5 : 1;
-      features.push({
-        type: 'Feature',
-        geometry: point.geometry,
-        properties: { label: `${km}`, everyN }
-      });
-      km++;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const from = coords[i];
+      const to = coords[i + 1];
+      const segmentLength = distance(from, to, { units: 'kilometers' });
+      if (segmentLength <= epsilon) continue;
+
+      // Bearing is constant along a segment; compute it lazily and only once,
+      // shared by every km mark that lands on this segment.
+      let segmentBearing: number | undefined;
+      while (km <= cumulative + segmentLength + epsilon) {
+        if (segmentBearing === undefined) segmentBearing = bearing(from, to);
+        const point = destination(from, km - cumulative, segmentBearing, {
+          units: 'kilometers'
+        });
+        const everyN = km % 10 === 0 ? 10 : km % 5 === 0 ? 5 : 1;
+        features.push({
+          type: 'Feature',
+          geometry: point.geometry,
+          properties: { label: `${km}`, everyN }
+        });
+        km++;
+      }
+      cumulative += segmentLength;
     }
-    cumulative += segmentLength;
   }
 
   return { type: 'FeatureCollection', features };
