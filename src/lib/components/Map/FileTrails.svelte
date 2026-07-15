@@ -30,17 +30,13 @@
 
   // Km markers are generated once at 1 km spacing (see computeKmMarkers) and tagged with
   // `everyN` (the coarsest interval they belong to: 10, 5 or 1). Zoom-driven `step`
-  // expressions then reveal every 10th / 5th / 1st marker as the map zooms in, and hide them
-  // all below zoom 8 — without ever re-uploading the marker data.
-  //
-  // Reveal thresholds are INTEGER zoom levels on purpose. The circle uses a paint-opacity
-  // step (re-evaluated per frame, snaps at the threshold), but the label must NOT use
-  // paint opacity: symbol layers only sample paint opacity at integer zoom stops and
-  // interpolate between them, so a fractional threshold (e.g. 9.5) makes the digits linger
-  // half-transparent across a whole integer band while the circle is still hidden. Instead
-  // the label is revealed via its `text-field` (a layout property, re-evaluated on integer
-  // zoom change) that returns '' while hidden. Keeping both on the same integer thresholds
-  // makes the digits snap in together with their circle.
+  // expressions reveal every 10th / 5th / 1st marker as the map zooms in and hide them all
+  // below zoom 8, without ever re-uploading the marker data. The reveal thresholds are
+  // INTEGER zoom levels so the circle (revealed just below via a paint-opacity step) and the
+  // label (revealed via its text-field — see the km label layer in renderTrail) snap in
+  // together: symbol layers sample paint opacity only at integer zoom stops and interpolate
+  // between them, so a fractional threshold would smear the label half-transparent across a
+  // zoom band while the circle stayed hidden.
   const KM_ZOOM_10 = 8; // every 10th km marker appears here
   const KM_ZOOM_5 = 10; // every 5th (and 10th) from here
   const KM_ZOOM_1 = 12; // every km from here
@@ -55,30 +51,11 @@
     KM_ZOOM_1,
     1
   ];
-  // Same reveal schedule as KM_VISIBILITY, but as a text-field value: the label string when
-  // the marker should show at the current zoom, otherwise '' (nothing rendered).
-  const KM_LABEL_FIELD: ExpressionSpecification = [
-    'step',
-    ['zoom'],
-    '',
-    KM_ZOOM_10,
-    ['case', ['>=', ['get', 'everyN'], 10], ['get', 'label'], ''],
-    KM_ZOOM_5,
-    ['case', ['>=', ['get', 'everyN'], 5], ['get', 'label'], ''],
-    KM_ZOOM_1,
-    ['get', 'label']
-  ];
 
-  // Km marker background is fully white so the underlying map never shows through.
-  const KM_BACKGROUND = 'rgba(255, 255, 255, 1)';
-
-  // Route lines are drawn semi-transparently once the map is zoomed in far enough to look
-  // at the route in detail (so the underlying road stays visible); fully opaque below that.
-  const ROUTE_OPACITY = 0.8;
-  const ROUTE_OPACITY_TRANSPARENT = 0.45;
-  const TRANSPARENT_MIN_ZOOM = ZOOM_LEVELS.ROAD; // "looking at the route in detail"
-  const routesTransparentNow = () => map.getZoom() >= TRANSPARENT_MIN_ZOOM;
-  const lineOpacity = () => (routesTransparentNow() ? ROUTE_OPACITY_TRANSPARENT : ROUTE_OPACITY);
+  // Route lines are drawn semi-transparently once the map is zoomed in far enough to look at
+  // the route in detail (>= road zoom) so the underlying street stays visible; fully opaque
+  // below that.
+  const lineOpacity = () => (map.getZoom() >= ZOOM_LEVELS.ROAD ? 0.45 : 0.8);
 
   // Layer/source id helpers. The base `id` is the line layer/source (kept for backwards
   // compat); it also backs the name label, which draws along the same line geometry, so no
@@ -87,51 +64,6 @@
   const kmCircleId = (id: string) => `${id}__km-circle`;
   const kmLabelId = (id: string) => `${id}__km-label`;
   const nameLabelId = (id: string) => `${id}__name`;
-
-  // Km label text: slightly smaller for labels with more than 2 digits (> 99) so the
-  // number still fits inside the marker.
-  const KM_LABEL_SIZE = 10;
-  const KM_LABEL_SIZE_SMALL = 8;
-  const KM_TEXT_SIZE: ExpressionSpecification = [
-    'case',
-    ['>', ['to-number', ['get', 'label']], 99],
-    KM_LABEL_SIZE_SMALL,
-    KM_LABEL_SIZE
-  ];
-
-  /** The label shown along a route: the file name minus its extension. */
-  const routeNameFor = (layer: FileDataLayer) =>
-    (layer.originalFileName ?? '').replace(/\.[^./\\]+$/, '');
-
-  // --- Route name labels ---
-  // Names are placed alongside each route: repeated along the route (`line`, so they follow
-  // the curvature) but offset to the side with some spacing, a slightly larger font and a
-  // slightly bigger white outline for readability.
-  const NAME_SPACING = 250;
-  const NAME_HALO_WIDTH = 2.5;
-  // Triple the gap between repeated names once zoomed in past ~15, so they don't repeat
-  // too densely when looking at the route up close.
-  const NAME_SPACING_EXPR: ExpressionSpecification = [
-    'step',
-    ['zoom'],
-    NAME_SPACING,
-    14,
-    NAME_SPACING * 3
-  ];
-  // Name font grows with zoom: 9px at zoom 6 (and below), 15px at zoom 12 (and above),
-  // linearly interpolated in between.
-  const NAME_TEXT_SIZE: ExpressionSpecification = [
-    'interpolate',
-    ['linear'],
-    ['zoom'],
-    6,
-    9,
-    12,
-    15
-  ];
-  // Perpendicular (screen-space) offset lifting the name off the line.
-  const NAME_OFFSET: [number, number] = [0, -1.3];
-  const NAME_MAX_ANGLE = 40;
 
   // Track rendered trail layers.
   const rendered = new Set<string>();
@@ -142,21 +74,6 @@
   // The badge icons themselves live in ./endpointIcon.
   const ENDPOINT_SOURCE = '__route-endpoints';
   const ENDPOINT_LAYER = '__route-endpoints-layer';
-
-  // Green = start, red = end, split red|green = a merged start+end ("pause").
-  const ENDPOINT_ICON: ExpressionSpecification = [
-    'match',
-    ['get', 'type'],
-    'start',
-    ENDPOINT_ICONS.start,
-    'end',
-    ENDPOINT_ICONS.end,
-    ENDPOINT_ICONS.pause
-  ];
-
-  // Badges appear together with the km markers (from zoom 8) at a fixed size — no fading
-  // or resizing. `icon-opacity` is a paint property, so this snaps at the threshold.
-  const ENDPOINT_VISIBILITY: ExpressionSpecification = ['step', ['zoom'], 0, 8, 1];
 
   const fitToTrail = (geoJson: FileDataLayer['geoJson']) => {
     try {
@@ -220,11 +137,23 @@
         type: 'symbol',
         source: ENDPOINT_SOURCE,
         layout: {
-          'icon-image': ENDPOINT_ICON,
+          // Green = start, red = end, split red|green = a merged start+end ("pause").
+          'icon-image': [
+            'match',
+            ['get', 'type'],
+            'start',
+            ENDPOINT_ICONS.start,
+            'end',
+            ENDPOINT_ICONS.end,
+            ENDPOINT_ICONS.pause
+          ],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true
         },
-        paint: { 'icon-opacity': ENDPOINT_VISIBILITY }
+        // Badges appear together with the km markers (from zoom 8) at a fixed size — no
+        // fading or resizing. `icon-opacity` is a paint property, so this snaps at the
+        // threshold.
+        paint: { 'icon-opacity': ['step', ['zoom'], 0, 8, 1] }
       });
     }
   };
@@ -282,7 +211,8 @@
         type: 'circle',
         source: kmSourceId(id),
         paint: {
-          'circle-color': KM_BACKGROUND,
+          // Fully white background so the underlying map never shows through the marker.
+          'circle-color': 'rgba(255, 255, 255, 1)',
           'circle-radius': 9,
           'circle-opacity': KM_VISIBILITY,
           'circle-stroke-width': 1.5,
@@ -300,9 +230,24 @@
         type: 'symbol',
         source: kmSourceId(id),
         layout: {
-          // Reveal via the (layout) text-field, not paint opacity — see KM_LABEL_FIELD.
-          'text-field': KM_LABEL_FIELD,
-          'text-size': KM_TEXT_SIZE,
+          // Reveal the label through its text-field (a LAYOUT property, re-evaluated on
+          // integer zoom change), NOT paint opacity — see the note by KM_VISIBILITY. Same
+          // reveal schedule & integer thresholds as the circle, so the digits snap in with
+          // it: the label string when the marker should show, otherwise '' (nothing drawn).
+          'text-field': [
+            'step',
+            ['zoom'],
+            '',
+            KM_ZOOM_10,
+            ['case', ['>=', ['get', 'everyN'], 10], ['get', 'label'], ''],
+            KM_ZOOM_5,
+            ['case', ['>=', ['get', 'everyN'], 5], ['get', 'label'], ''],
+            KM_ZOOM_1,
+            ['get', 'label']
+          ],
+          // Slightly smaller for labels with more than 2 digits (> 99) so the number still
+          // fits inside the marker.
+          'text-size': ['case', ['>', ['to-number', ['get', 'label']], 99], 8, 10],
           'text-allow-overlap': true,
           'text-ignore-placement': true
         },
@@ -313,8 +258,10 @@
     }
 
     // --- Route name label (drawn along the full route) ---
-    // Reuses the base line source (`id`) — same geometry, no need for a second copy.
-    const routeName = routeNameFor(layer);
+    // The label is the file name minus its extension. It reuses the base line source (`id`)
+    // — same geometry, no need for a second copy — and is placed along the line (so it
+    // follows the curvature), repeated, offset to the side, in a zoom-scaled font.
+    const routeName = (layer.originalFileName ?? '').replace(/\.[^./\\]+$/, '');
     if (!map.getLayer(nameLabelId(id))) {
       map.addLayer({
         id: nameLabelId(id),
@@ -322,11 +269,15 @@
         source: id,
         layout: {
           'symbol-placement': 'line',
-          'symbol-spacing': NAME_SPACING_EXPR,
+          // Repeat the name every 250px, tripling the gap once zoomed in past ~14 so it
+          // doesn't repeat too densely when looking at the route up close.
+          'symbol-spacing': ['step', ['zoom'], 250, 14, 250 * 3],
           'text-field': routeName,
-          'text-size': NAME_TEXT_SIZE,
-          'text-offset': NAME_OFFSET,
-          'text-max-angle': NAME_MAX_ANGLE,
+          // Font grows with zoom: 9px at zoom 6 (and below) to 15px at zoom 12 (and above).
+          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 9, 12, 15],
+          // Perpendicular (screen-space) offset lifting the name off the line.
+          'text-offset': [0, -1.3],
+          'text-max-angle': 40,
           'text-keep-upright': true,
           // Leave Mapbox's built-in collision detection on (the default) so route names
           // dodge each other instead of piling up where routes run close together. The
@@ -338,7 +289,7 @@
         paint: {
           'text-color': color,
           'text-halo-color': 'rgba(255, 255, 255, 0.9)',
-          'text-halo-width': NAME_HALO_WIDTH
+          'text-halo-width': 2.5
         }
       });
     } else {
@@ -362,21 +313,17 @@
     rendered.delete(id);
   };
 
-  // The WTMG garden layers (see GardenLayer.svelte), in the order they are added — i.e.
-  // bottom-to-top in the style. Uploaded route layers are always kept below these so the
-  // garden icons stay visible on top of the routes.
-  const GARDEN_LAYER_IDS = [
-    'clusters',
-    'cluster-count',
-    'unclustered-point',
-    'saved-gardens-layer'
-  ];
-
   /**
-   * The id of the lowest-stacked garden layer currently present, used as the `beforeId`
-   * when raising route layers so they never end up on top of the garden icons.
+   * The id of the lowest-stacked garden layer currently present, used as the `beforeId` when
+   * raising route layers so they never end up on top of the garden icons (uploaded route
+   * layers are always kept below these so the garden icons stay visible). The list is the
+   * WTMG garden layers (see GardenLayer.svelte) in the order they are added — i.e.
+   * bottom-to-top in the style — so `.find` returns the lowest one present.
    */
-  const gardenFloorLayerId = () => GARDEN_LAYER_IDS.find((id) => map.getLayer(id));
+  const gardenFloorLayerId = () =>
+    ['clusters', 'cluster-count', 'unclustered-point', 'saved-gardens-layer'].find((id) =>
+      map.getLayer(id)
+    );
 
   // Raise a layer as high as possible while staying below the garden layers.
   const moveToTop = (layerId: string) => {
@@ -427,8 +374,8 @@
 
   /**
    * On zoom: update only the zoom-dependent route-line transparency. (Km markers and
-   * start/end badges reveal themselves via their KM_VISIBILITY / ENDPOINT_VISIBILITY paint
-   * expressions, so they need no per-zoom handling here.)
+   * start/end badges reveal themselves via their own zoom `step` expressions, so they need
+   * no per-zoom handling here.)
    */
   const onZoom = () => {
     // Route-line transparency depends on the zoom level.
