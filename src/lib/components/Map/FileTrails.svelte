@@ -130,7 +130,7 @@
   ];
   // Perpendicular (screen-space) offset lifting the name off the line.
   const NAME_OFFSET: [number, number] = [0, -1.3];
-  const NAME_MAX_ANGLE = 60;
+  const NAME_MAX_ANGLE = 40;
 
   // Track rendered trail layers.
   const rendered = new Set<string>();
@@ -333,10 +333,12 @@
           'text-offset': NAME_OFFSET,
           'text-max-angle': NAME_MAX_ANGLE,
           'text-keep-upright': true,
-          // Keep the name reliably visible along the route rather than letting collision
-          // with base-map labels drop it.
-          'text-allow-overlap': true,
-          'text-ignore-placement': true
+          // Leave Mapbox's built-in collision detection on (the default) so route names
+          // dodge each other instead of piling up where routes run close together. The
+          // trade-off: a name may be dropped at some zooms when it collides with another
+          // label (a base-map street name, another route's name, or a km/endpoint label).
+          'text-allow-overlap': false,
+          'text-ignore-placement': false
         },
         paint: {
           'text-color': color,
