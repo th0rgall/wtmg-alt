@@ -15,10 +15,11 @@ import type { Feature, FeatureCollection, LineString, Point, Position } from 'ge
  */
 const ROUTE_COLORS = [
   '#4b0082', // indigo (original dark purple)
-  '#d7263d', // crimson red
+  '#d7263d', // dark red
   '#1565c0', // strong blue
-  '#d81b60', // magenta / deep pink
-  '#e65100' // deep orange
+  '#e65100', // dark orange
+  '#299000', // dark green,
+  '#e500dd' // bright pink
 ];
 
 /**
