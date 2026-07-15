@@ -61,8 +61,16 @@
   const kmLabelId = (id: string) => `${id}__km-label`;
   const nameLabelId = (id: string) => `${id}__name`;
 
-  // Track rendered trail layers.
-  const rendered = new Set<string>();
+  // Per-trail record of what we last drew, so a store change can be diffed down to the
+  // minimal map work: only re-render a trail whose geometry actually changed, only recolour
+  // one whose palette slot shifted, and — the common case — only flip layer `visibility` when
+  // a route is toggled in the sidebar (no km-marker recompute, no source rewrite).
+  type RenderedTrail = {
+    geoJson: FileDataLayer['geoJson'];
+    visible: boolean;
+    color: string;
+  };
+  const rendered = new Map<string, RenderedTrail>();
 
   // --- Start/end badges ---
   // Drawn as a single symbol layer (one feature per clustered endpoint) so their
@@ -160,6 +168,20 @@
     setLayerVisibility(kmCircleId(layer.id), lineVisible);
     setLayerVisibility(kmLabelId(layer.id), lineVisible);
     setLayerVisibility(nameLabelId(layer.id), lineVisible);
+  };
+
+  /**
+   * Recolours a trail's four layers in place (paint properties only). Used when a trail's
+   * palette slot shifts because another trail was added/removed — no need to recompute km
+   * markers or rewrite any source data.
+   */
+  const applyColor = (id: string, color: string) => {
+    if (map.getLayer(id)) map.setPaintProperty(id, 'line-color', color);
+    if (map.getLayer(kmCircleId(id))) {
+      map.setPaintProperty(kmCircleId(id), 'circle-stroke-color', color);
+    }
+    if (map.getLayer(kmLabelId(id))) map.setPaintProperty(kmLabelId(id), 'text-color', color);
+    if (map.getLayer(nameLabelId(id))) map.setPaintProperty(nameLabelId(id), 'text-color', color);
   };
 
   // Dev-only micro-benchmark: runs `work` and, on the dev server only, logs how long it took
@@ -316,7 +338,7 @@
     // Start/end badges are managed globally (see rebuildEndpoints).
 
     applyVisibility(layer);
-    rendered.add(id);
+    rendered.set(id, { geoJson, visible: layer.visible !== false, color });
   };
 
   const removeTrail = (id: string) => {
@@ -368,24 +390,74 @@
     moveToTop(ENDPOINT_LAYER);
   };
 
-  /** Full reconcile of the map against the current trails + tweaks state. */
-  const sync = () => {
-    const layers = get(fileDataLayers);
-
+  /**
+   * Reconciles the map against the current trails. Diff-based: each trail is compared to what
+   * we last drew (see `rendered`) so only what actually changed is touched —
+   *  • new trail        → full render
+   *  • gone trail       → remove
+   *  • geometry changed → re-render that trail (recompute km markers, rewrite its sources)
+   *  • palette shifted  → recolour only (add/remove reorders the colour slots)
+   *  • visibility only  → flip that trail's layer `visibility` only (the sidebar toggle case)
+   *
+   * The two global passes only run when their inputs changed: the clustered start/end badges
+   * when the set of visible trails (or a visible trail's geometry) changed, and the layer
+   * restack when trails were added/removed/reordered. A plain visibility toggle triggers
+   * neither a per-trail re-render nor the layer restack.
+   */
+  const sync = (layers: FileDataLayer[]) => {
     const wantedIds = new Set(layers.map((layer) => layer.id));
+
+    let endpointsChanged = false; // rebuild the clustered start/end badges
+    let stackChanged = false; // re-apply the layer stacking order
+
     // Remove trails that are no longer present.
-    [...rendered].forEach((id) => {
-      if (!wantedIds.has(id)) removeTrail(id);
+    [...rendered.keys()].forEach((id) => {
+      if (wantedIds.has(id)) return;
+      const prev = rendered.get(id);
+      removeTrail(id);
+      stackChanged = true;
+      if (prev?.visible) endpointsChanged = true;
     });
 
     // Add/update remaining trails. Index (upload order) drives the alternating colour.
-    layers.forEach((layer, index) => renderTrail(layer, colorForRoute(index)));
+    layers.forEach((layer, index) => {
+      const color = colorForRoute(index);
+      const visible = layer.visible !== false;
+      const prev = rendered.get(layer.id);
 
-    // Rebuild the global (clustered) start/end badges from the current state.
-    rebuildEndpoints();
+      if (!prev) {
+        renderTrail(layer, color);
+        stackChanged = true;
+        if (visible) endpointsChanged = true;
+        return;
+      }
 
-    // Stack everything (km markers & badges on top of all route lines).
-    applyLayerOrder();
+      // The store only replaces `geoJson` by reference when the file data actually changed, so
+      // an identity check distinguishes a real geometry update from a mere visibility flip.
+      if (prev.geoJson !== layer.geoJson) {
+        renderTrail(layer, color);
+        // A visible trail's start/end points may have moved.
+        if (visible || prev.visible) endpointsChanged = true;
+        return;
+      }
+
+      // Geometry unchanged: apply only the properties that shifted.
+      if (prev.color !== color) {
+        applyColor(layer.id, color);
+        stackChanged = true; // a colour shift means the trail order changed (add/remove)
+      }
+      if (prev.visible !== visible) {
+        applyVisibility(layer);
+        endpointsChanged = true;
+      }
+      rendered.set(layer.id, { geoJson: layer.geoJson, visible, color });
+    });
+
+    // Rebuild the global (clustered) start/end badges only when the visible set changed.
+    if (endpointsChanged) rebuildEndpoints();
+
+    // Re-stack (km markers & badges on top of all route lines) only when the set/order changed.
+    if (stackChanged) applyLayerOrder();
   };
 
   /**
@@ -395,22 +467,26 @@
    */
   const onZoom = () => {
     // Route-line transparency depends on the zoom level.
-    rendered.forEach((id) => {
+    rendered.forEach((_trail, id) => {
       if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', lineOpacity());
     });
   };
 
   map.on('zoom', onZoom);
 
-  const unsubscribeLayers = fileDataLayers.subscribe(sync);
+  // Reconcile the map whenever the trails store changes. Reading `$fileDataLayers` registers
+  // it as the effect's only dependency; `sync` then diffs against what's already drawn so a
+  // single-route toggle only flips that route's layer visibility.
+  $effect(() => {
+    sync($fileDataLayers);
+  });
 
   onDestroy(() => {
-    unsubscribeLayers();
     map.off('zoom', onZoom);
     // Guard against the map having been torn down already (e.g. on navigation away).
     try {
       removeEndpointLayer();
-      [...rendered].forEach(removeTrail);
+      [...rendered.keys()].forEach(removeTrail);
     } catch {
       // The map/style is gone; nothing left to clean up.
     }
