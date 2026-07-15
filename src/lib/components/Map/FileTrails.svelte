@@ -17,6 +17,7 @@
     type RouteEndpoint
   } from '$lib/util/map/util';
   import { ENDPOINT_ICONS, ensureEndpointIcons } from './endpointIcon';
+  import { ensureKmCircleIcon } from './kmCircleIcon';
   import * as Sentry from '@sentry/sveltekit';
   import logger from '$lib/util/logger';
   import { dev } from '$app/environment';
@@ -25,28 +26,37 @@
   const map = getMap();
 
   // Km markers are generated once at 1 km spacing (see computeKmMarkers) and tagged with
-  // `everyN` (the coarsest interval they belong to: 10, 5 or 1). Zoom-driven `step`
-  // expressions reveal every 10th / 5th / 1st marker as the map zooms in and hide them all
-  // below zoom 8, without ever re-uploading the marker data. The reveal thresholds are
-  // INTEGER zoom levels so the circle (revealed just below via a paint-opacity step) and the
-  // label (revealed via its text-field — see the km label layer in renderTrail) snap in
-  // together: symbol layers sample paint opacity only at integer zoom stops and interpolate
-  // between them, so a fractional threshold would smear the label half-transparent across a
-  // zoom band while the circle stayed hidden.
+  // `everyN` (the coarsest interval they belong to: 10, 5 or 1). A single symbol layer per
+  // route draws both the white circle (as its `icon-image`) and the km number (as its
+  // `text-field`); a zoom-driven `step` expression on each reveals every 10th / 5th / 1st
+  // marker as the map zooms in and hides them all below zoom 8, without ever re-uploading the
+  // marker data. Because the circle and number share one symbol, Mapbox's native symbol fade
+  // (the map's `fadeDuration`) fades them in and out *together* when they cross a reveal
+  // threshold. The thresholds are INTEGER zoom levels so the reveal snaps cleanly: symbol
+  // layers re-evaluate zoom-driven layout expressions only at integer zoom stops, so a
+  // fractional threshold would reveal the marker mid-band and desync the icon/text fade.
   const KM_ZOOM_10 = 8; // every 10th km marker appears here
   const KM_ZOOM_5 = 10; // every 5th (and 10th) from here
   const KM_ZOOM_1 = 12; // every km from here
-  const KM_VISIBILITY: ExpressionSpecification = [
-    'step',
-    ['zoom'],
-    0,
-    KM_ZOOM_10,
-    ['case', ['>=', ['get', 'everyN'], 10], 1, 0],
-    KM_ZOOM_5,
-    ['case', ['>=', ['get', 'everyN'], 5], 1, 0],
-    KM_ZOOM_1,
-    1
-  ];
+
+  // Builds the shared reveal schedule: `shown` for markers that belong at the current zoom,
+  // `hidden` for the rest. Used for both the circle icon (`shown` = its image id) and the
+  // number text (`shown` = the label), so the two always appear/disappear on the same zoom.
+  const kmReveal = (
+    shown: string | ExpressionSpecification,
+    hidden: string
+  ): ExpressionSpecification =>
+    [
+      'step',
+      ['zoom'],
+      hidden,
+      KM_ZOOM_10,
+      ['case', ['>=', ['get', 'everyN'], 10], shown, hidden],
+      KM_ZOOM_5,
+      ['case', ['>=', ['get', 'everyN'], 5], shown, hidden],
+      KM_ZOOM_1,
+      shown
+    ] as ExpressionSpecification;
 
   // Route lines are drawn semi-transparently once the map is zoomed in far enough to look at
   // the route in detail (>= road zoom) so the underlying street stays visible; fully opaque
@@ -57,7 +67,6 @@
   // compat); it also backs the name label, which draws along the same line geometry, so no
   // separate name source is needed.
   const kmSourceId = (id: string) => `${id}__km`;
-  const kmCircleId = (id: string) => `${id}__km-circle`;
   const kmLabelId = (id: string) => `${id}__km-label`;
   const nameLabelId = (id: string) => `${id}__name`;
 
@@ -165,22 +174,23 @@
   const applyVisibility = (layer: FileDataLayer) => {
     const lineVisible = layer.visible !== false;
     setLayerVisibility(layer.id, lineVisible);
-    setLayerVisibility(kmCircleId(layer.id), lineVisible);
     setLayerVisibility(kmLabelId(layer.id), lineVisible);
     setLayerVisibility(nameLabelId(layer.id), lineVisible);
   };
 
   /**
-   * Recolours a trail's four layers in place (paint properties only). Used when a trail's
-   * palette slot shifts because another trail was added/removed — no need to recompute km
-   * markers or rewrite any source data.
+   * Recolours a trail's layers in place (paint/icon only). Used when a trail's palette slot
+   * shifts because another trail was added/removed — no need to recompute km markers or
+   * rewrite any source data. The km circle is an image, so recolouring it swaps the layer's
+   * `icon-image` to the matching-colour circle (registered on demand).
    */
   const applyColor = (id: string, color: string) => {
     if (map.getLayer(id)) map.setPaintProperty(id, 'line-color', color);
-    if (map.getLayer(kmCircleId(id))) {
-      map.setPaintProperty(kmCircleId(id), 'circle-stroke-color', color);
+    if (map.getLayer(kmLabelId(id))) {
+      const iconId = ensureKmCircleIcon(map, color);
+      map.setLayoutProperty(kmLabelId(id), 'icon-image', kmReveal(iconId, ''));
+      map.setPaintProperty(kmLabelId(id), 'text-color', color);
     }
-    if (map.getLayer(kmLabelId(id))) map.setPaintProperty(kmLabelId(id), 'text-color', color);
     if (map.getLayer(nameLabelId(id))) map.setPaintProperty(nameLabelId(id), 'text-color', color);
   };
 
@@ -231,7 +241,7 @@
     if (isNew && layer.animate) fitToTrail(geoJson);
 
     // --- Kilometre markers ---
-    // Generated once at 1 km spacing; the current zoom's subset is revealed by KM_VISIBILITY.
+    // Generated once at 1 km spacing; the current zoom's subset is revealed by kmReveal.
     const kmData = benchmark(`calculate km markers · ${benchName}`, () =>
       computeKmMarkers(geoJson)
     );
@@ -242,46 +252,24 @@
         (map.getSource(kmSourceId(id)) as GeoJSONSource | undefined)?.setData(kmData);
       }
 
-      if (!map.getLayer(kmCircleId(id))) {
-        map.addLayer({
-          id: kmCircleId(id),
-          type: 'circle',
-          source: kmSourceId(id),
-          paint: {
-            // Fully white background so the underlying map never shows through the marker.
-            'circle-color': 'rgba(255, 255, 255, 1)',
-            'circle-radius': 9,
-            'circle-opacity': KM_VISIBILITY,
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': color,
-            'circle-stroke-opacity': KM_VISIBILITY
-          }
-        });
-      } else {
-        map.setPaintProperty(kmCircleId(id), 'circle-stroke-color', color);
-      }
-
+      // One symbol layer draws the whole marker: the white circle as its icon and the km
+      // number as its text. Both are revealed by the SAME zoom `step` schedule (kmReveal), so
+      // they enter/leave together — and because they're one symbol, Mapbox's native symbol
+      // fade (map `fadeDuration`) fades the circle in with the number instead of popping it in.
+      const iconId = ensureKmCircleIcon(map, color);
       if (!map.getLayer(kmLabelId(id))) {
         map.addLayer({
           id: kmLabelId(id),
           type: 'symbol',
           source: kmSourceId(id),
           layout: {
-            // Reveal the label through its text-field (a LAYOUT property, re-evaluated on
-            // integer zoom change), NOT paint opacity — see the note by KM_VISIBILITY. Same
-            // reveal schedule & integer thresholds as the circle, so the digits snap in with
-            // it: the label string when the marker should show, otherwise '' (nothing drawn).
-            'text-field': [
-              'step',
-              ['zoom'],
-              '',
-              KM_ZOOM_10,
-              ['case', ['>=', ['get', 'everyN'], 10], ['get', 'label'], ''],
-              KM_ZOOM_5,
-              ['case', ['>=', ['get', 'everyN'], 5], ['get', 'label'], ''],
-              KM_ZOOM_1,
-              ['get', 'label']
-            ],
+            // Reveal the circle image at the marker's zoom band (its id when shown, otherwise
+            // '' = no icon). Always drawn (no collision) so markers never drop out.
+            'icon-image': kmReveal(iconId, ''),
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+            // Reveal the number on the exact same schedule (the label when shown, else '').
+            'text-field': kmReveal(['get', 'label'], ''),
             // Slightly smaller for labels with more than 2 digits (> 99) so the number still
             // fits inside the marker.
             'text-size': ['case', ['>', ['to-number', ['get', 'label']], 99], 8, 10],
@@ -291,6 +279,7 @@
           paint: { 'text-color': color }
         });
       } else {
+        map.setLayoutProperty(kmLabelId(id), 'icon-image', kmReveal(iconId, ''));
         map.setPaintProperty(kmLabelId(id), 'text-color', color);
       }
     });
@@ -342,7 +331,7 @@
   };
 
   const removeTrail = (id: string) => {
-    [nameLabelId(id), kmLabelId(id), kmCircleId(id), id].forEach((layerId) => {
+    [nameLabelId(id), kmLabelId(id), id].forEach((layerId) => {
       if (map.getLayer(layerId)) map.removeLayer(layerId);
     });
     if (map.getSource(kmSourceId(id))) map.removeSource(kmSourceId(id));
@@ -385,7 +374,6 @@
     const ids = currentTrailIds();
     ids.forEach((id) => moveToTop(id));
     ids.forEach((id) => moveToTop(nameLabelId(id)));
-    ids.forEach((id) => moveToTop(kmCircleId(id)));
     ids.forEach((id) => moveToTop(kmLabelId(id)));
     moveToTop(ENDPOINT_LAYER);
   };
