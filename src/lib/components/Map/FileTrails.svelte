@@ -4,11 +4,6 @@
   import { fileDataLayers } from '$lib/stores/file';
   import { getContext, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import type { ExpressionSpecification, GeoJSONSource, Marker } from 'mapbox-gl';
-  import mapboxgl from 'mapbox-gl';
-  import { fileDataLayers } from '$lib/stores/file';
-  import { getContext, onDestroy } from 'svelte';
-  import { get } from 'svelte/store';
   import { bbox } from '@turf/bbox';
   import key from './mapbox-context.js';
   import { ZOOM_LEVELS } from '$lib/constants';
