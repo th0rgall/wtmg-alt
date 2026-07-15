@@ -24,6 +24,7 @@
   import { ENDPOINT_ICONS, ensureEndpointIcons } from './endpointIcon';
   import * as Sentry from '@sentry/sveltekit';
   import logger from '$lib/util/logger';
+  import { dev } from '$app/environment';
 
   const { getMap } = getContext<ContextType>(key);
   const map = getMap();
@@ -166,96 +167,116 @@
     setLayerVisibility(nameLabelId(layer.id), lineVisible);
   };
 
+  // Dev-only micro-benchmark: runs `work` and, on the dev server only, logs how long it took
+  // via the Performance API (performance.now()). Outside `yarn dev` it just runs the work,
+  // with no measuring/logging overhead. Returns whatever `work` returns.
+  function benchmark<T>(label: string, work: () => T): T {
+    if (!dev) return work();
+    const start = performance.now();
+    try {
+      return work();
+    } finally {
+      logger.info(`⏱ [FileTrails] ${label}: ${(performance.now() - start).toFixed(2)} ms`);
+    }
+  }
+
   const renderTrail = (layer: FileDataLayer, color: string) => {
     const { id, geoJson } = layer;
     const isNew = !map.getSource(id);
+    // Short identifier for the dev benchmark logs below.
+    const benchName = layer.originalFileName ?? id;
 
     // --- Route line ---
+    // Import (add the GeoJSON source) & render (add the line layer) the basic route line.
+    benchmark(`${isNew ? 'import + render' : 'update'} line · ${benchName}`, () => {
+      // Add or update source data depending
+      if (isNew) {
+        map.addSource(id, { type: 'geojson', data: geoJson });
+      } else {
+        (map.getSource(id) as GeoJSONSource | undefined)?.setData(geoJson);
+      }
 
-    // Add or update source data depending
-    if (isNew) {
-      map.addSource(id, { type: 'geojson', data: geoJson });
-    } else {
-      (map.getSource(id) as GeoJSONSource | undefined)?.setData(geoJson);
-      (map.getSource(id) as GeoJSONSource | undefined)?.setData(geoJson);
-    }
-
-    if (!map.getLayer(id)) {
-      map.addLayer({
-        id,
-        type: 'line',
-        source: id,
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-width': 7, 'line-color': color, 'line-opacity': lineOpacity() }
-      });
-    } else {
-      map.setPaintProperty(id, 'line-color', color);
-      map.setPaintProperty(id, 'line-opacity', lineOpacity());
-    }
+      if (!map.getLayer(id)) {
+        map.addLayer({
+          id,
+          type: 'line',
+          source: id,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-width': 7, 'line-color': color, 'line-opacity': lineOpacity() }
+        });
+      } else {
+        map.setPaintProperty(id, 'line-color', color);
+        map.setPaintProperty(id, 'line-opacity', lineOpacity());
+      }
+    });
 
     // Zoom to the trail only when we just added it locally.
     if (isNew && layer.animate) fitToTrail(geoJson);
 
     // --- Kilometre markers ---
     // Generated once at 1 km spacing; the current zoom's subset is revealed by KM_VISIBILITY.
-    const kmData = computeKmMarkers(geoJson);
-    if (!map.getSource(kmSourceId(id))) {
-      map.addSource(kmSourceId(id), { type: 'geojson', data: kmData });
-    } else {
-      (map.getSource(kmSourceId(id)) as GeoJSONSource | undefined)?.setData(kmData);
-    }
+    const kmData = benchmark(`calculate km markers · ${benchName}`, () =>
+      computeKmMarkers(geoJson)
+    );
+    benchmark(`render km markers · ${benchName}`, () => {
+      if (!map.getSource(kmSourceId(id))) {
+        map.addSource(kmSourceId(id), { type: 'geojson', data: kmData });
+      } else {
+        (map.getSource(kmSourceId(id)) as GeoJSONSource | undefined)?.setData(kmData);
+      }
 
-    if (!map.getLayer(kmCircleId(id))) {
-      map.addLayer({
-        id: kmCircleId(id),
-        type: 'circle',
-        source: kmSourceId(id),
-        paint: {
-          // Fully white background so the underlying map never shows through the marker.
-          'circle-color': 'rgba(255, 255, 255, 1)',
-          'circle-radius': 9,
-          'circle-opacity': KM_VISIBILITY,
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': color,
-          'circle-stroke-opacity': KM_VISIBILITY
-        }
-      });
-    } else {
-      map.setPaintProperty(kmCircleId(id), 'circle-stroke-color', color);
-    }
+      if (!map.getLayer(kmCircleId(id))) {
+        map.addLayer({
+          id: kmCircleId(id),
+          type: 'circle',
+          source: kmSourceId(id),
+          paint: {
+            // Fully white background so the underlying map never shows through the marker.
+            'circle-color': 'rgba(255, 255, 255, 1)',
+            'circle-radius': 9,
+            'circle-opacity': KM_VISIBILITY,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': color,
+            'circle-stroke-opacity': KM_VISIBILITY
+          }
+        });
+      } else {
+        map.setPaintProperty(kmCircleId(id), 'circle-stroke-color', color);
+      }
 
-    if (!map.getLayer(kmLabelId(id))) {
-      map.addLayer({
-        id: kmLabelId(id),
-        type: 'symbol',
-        source: kmSourceId(id),
-        layout: {
-          // Reveal the label through its text-field (a LAYOUT property, re-evaluated on
-          // integer zoom change), NOT paint opacity — see the note by KM_VISIBILITY. Same
-          // reveal schedule & integer thresholds as the circle, so the digits snap in with
-          // it: the label string when the marker should show, otherwise '' (nothing drawn).
-          'text-field': [
-            'step',
-            ['zoom'],
-            '',
-            KM_ZOOM_10,
-            ['case', ['>=', ['get', 'everyN'], 10], ['get', 'label'], ''],
-            KM_ZOOM_5,
-            ['case', ['>=', ['get', 'everyN'], 5], ['get', 'label'], ''],
-            KM_ZOOM_1,
-            ['get', 'label']
-          ],
-          // Slightly smaller for labels with more than 2 digits (> 99) so the number still
-          // fits inside the marker.
-          'text-size': ['case', ['>', ['to-number', ['get', 'label']], 99], 8, 10],
-          'text-allow-overlap': true,
-          'text-ignore-placement': true
-        },
-        paint: { 'text-color': color }
-      });
-    } else {
-      map.setPaintProperty(kmLabelId(id), 'text-color', color);
-    }
+      if (!map.getLayer(kmLabelId(id))) {
+        map.addLayer({
+          id: kmLabelId(id),
+          type: 'symbol',
+          source: kmSourceId(id),
+          layout: {
+            // Reveal the label through its text-field (a LAYOUT property, re-evaluated on
+            // integer zoom change), NOT paint opacity — see the note by KM_VISIBILITY. Same
+            // reveal schedule & integer thresholds as the circle, so the digits snap in with
+            // it: the label string when the marker should show, otherwise '' (nothing drawn).
+            'text-field': [
+              'step',
+              ['zoom'],
+              '',
+              KM_ZOOM_10,
+              ['case', ['>=', ['get', 'everyN'], 10], ['get', 'label'], ''],
+              KM_ZOOM_5,
+              ['case', ['>=', ['get', 'everyN'], 5], ['get', 'label'], ''],
+              KM_ZOOM_1,
+              ['get', 'label']
+            ],
+            // Slightly smaller for labels with more than 2 digits (> 99) so the number still
+            // fits inside the marker.
+            'text-size': ['case', ['>', ['to-number', ['get', 'label']], 99], 8, 10],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true
+          },
+          paint: { 'text-color': color }
+        });
+      } else {
+        map.setPaintProperty(kmLabelId(id), 'text-color', color);
+      }
+    });
 
     // --- Route name label (drawn along the full route) ---
     // The label is the file name minus its extension. It reuses the base line source (`id`)
