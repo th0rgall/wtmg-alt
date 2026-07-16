@@ -6,8 +6,7 @@
   import { fileDataLayers } from '$lib/stores/file';
   import { colorForRoute } from '$lib/util/map/util';
   import { cleanName } from '$lib/util/slugify';
-  import { onDestroy } from 'svelte';
-  import { deleteTrail, toggleTrailVisibility } from '$lib/api/trail';
+  import { deleteTrail } from '$lib/api/trail';
 
   interface Props {
     showHiking: boolean;
@@ -27,12 +26,6 @@
     onclick,
     inModal = false
   }: Props = $props();
-
-  let localFileDataLayers = $state($fileDataLayers);
-  const fileDataLayersUnsubscribe = fileDataLayers.subscribe((value) => {
-    localFileDataLayers = value;
-  });
-  onDestroy(fileDataLayersUnsubscribe);
 </script>
 
 <div class="static-layers" class:in-modal={inModal}>
@@ -51,13 +44,12 @@
 </div>
 
 <div class="data-layers" class:in-modal={inModal}>
-  {#each localFileDataLayers as layer, index}
+  {#each $fileDataLayers as layer, index (layer.id)}
     <MultiActionLabel
       icon={routesIcon}
       name={layer.id}
       label={cleanName(layer.originalFileName)}
-      checked={layer.visible}
-      onchange={() => toggleTrailVisibility(layer.id)}
+      bind:checked={layer.visible}
       onsecondary={() => deleteTrail(layer.id)}
     >
       {#snippet leading()}
