@@ -4,6 +4,11 @@
 
   interface Props {
     icon?: undefined | string;
+    /**
+     * Content rendered before the label as an alternative to `icon`, sharing the
+     * same horizontal margin. When set, it takes precedence over `icon`.
+     */
+    leading?: import('svelte').Snippet;
     labelFor?: undefined | string;
     ellipsis?: boolean;
     compact?: boolean;
@@ -14,6 +19,7 @@
 
   let {
     icon = undefined,
+    leading = undefined,
     labelFor = undefined,
     ellipsis = false,
     compact = false,
@@ -23,7 +29,9 @@
 </script>
 
 <label for={labelFor} class:compact>
-  {#if icon}
+  {#if leading}
+    <div class="leading">{@render leading()}</div>
+  {:else if icon}
     <div class="icon">
       <Icon {icon} />
     </div>
@@ -52,12 +60,24 @@
     width: 100%;
   }
 
+  /* Horizontal margin shared by the icon and its `leading` alternative, so both
+     provide the same (clickable) separation between preceding content and the label. */
+  .icon,
+  .leading {
+    margin: 0 0.5rem;
+  }
+
   .icon {
     height: 2rem;
     width: 2rem;
     padding-right: 0.2rem;
     display: inline-block;
-    margin: 0 0.5rem 0 0.5rem;
+  }
+
+  .leading {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
   }
 
   .icon :global(svg path.cls-1) {
@@ -80,7 +100,8 @@
       height: 3rem;
       width: 3rem;
     }
-    .icon {
+    .icon,
+    .leading {
       margin-right: 0.4rem;
     }
   }

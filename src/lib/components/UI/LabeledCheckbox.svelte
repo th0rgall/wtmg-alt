@@ -50,8 +50,7 @@
   class="checkbox-container"
 >
   <input id={name} type="checkbox" {disabled} {name} {oninput} bind:checked {onchange} />
-  {@render leading?.()}
-  <LabelWithIcon {ellipsis} {compact} title={label} labelFor={name} {icon}
+  <LabelWithIcon {ellipsis} {compact} title={label} labelFor={name} {icon} {leading}
     >{label ?? ''}{@render children?.()}</LabelWithIcon
   >
 </div>

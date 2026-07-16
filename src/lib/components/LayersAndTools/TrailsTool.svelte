@@ -61,16 +61,16 @@
       onsecondary={() => deleteTrail(layer.id)}
     >
       {#snippet leading()}
-        <!-- Colour indicator matching the route's colour on the map. It's a <label> for
-             the checkbox, so clicking it toggles visibility just like the route name. -->
-        <label
+        <!-- Colour indicator matching the route's colour on the map. It's rendered inside
+             LabelWithIcon's <label>, so clicking it toggles visibility just like the route
+             name (no need for its own `for` — a nested <label> would be invalid anyway). -->
+        <span
           class="trail-color"
           class:dimmed={!layer.visible}
-          for={layer.id}
           style:background={colorForRoute(index)}
           title="Route colour on the map"
           aria-hidden="true"
-        ></label>
+        ></span>
       {/snippet}
     </MultiActionLabel>
   {/each}
@@ -96,7 +96,7 @@
     width: 0.5rem;
     height: 1.4rem;
     /* No right margin: any gap here would be dead space between two toggle targets.
-       The following label's icon margin provides the (clickable) separation instead. */
+       The `leading` wrapper's horizontal margin provides the (clickable) separation. */
     border-radius: 0.25rem;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
     cursor: pointer;
