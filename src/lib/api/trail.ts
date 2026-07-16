@@ -35,39 +35,43 @@ export const createTrailObserver = () => {
 
   return onSnapshot(q, async (querySnapshot) => {
     const changes = querySnapshot.docChanges();
-    changes.map(async (change) => {
-      const trail: LocalTrail = {
-        id: change.doc.id,
-        animate: false,
-        ...change.doc.data()
-      };
-      if (change.type === 'added') {
-        const existingLocalLayer = findFileDataLayer(trail.id);
-        if (!existingLocalLayer) {
-          // Sync a *remote* addition to the local cache
-          // Locally added files are added before they are uploaded (see `createTrail()`).
-          //
-          // Download the trail file
-          const ref = getFileRef(trail.id);
-          const geoJson = await getDownloadURL(ref)
-            .then((url) => fetch(url))
-            .then((r) => r.json());
-          addFileDataLayers({
-            ...trail,
-            geoJson
-          });
+    await Promise.allSettled(
+      changes.map(async (change) => {
+        const trail: LocalTrail = {
+          id: change.doc.id,
+          animate: false,
+          ...change.doc.data()
+        };
+        if (change.type === 'added') {
+          const existingLocalLayer = findFileDataLayer(trail.id);
+          if (!existingLocalLayer) {
+            // Sync a *remote* addition to the local cache
+            // Locally added files are added before they are uploaded (see `createTrail()`).
+            //
+            // Download the trail file
+            const ref = getFileRef(trail.id);
+            // Note: after some time on of inactivity, getDownloadURL
+            // seems to hang on the dev server; and needs a restart.
+            const geoJson = await getDownloadURL(ref)
+              .then((url) => fetch(url))
+              .then((r) => r.json());
+            addFileDataLayers({
+              ...trail,
+              geoJson
+            });
+          }
+        } else if (change.type === 'removed') {
+          // Sync the deletion to the local cache
+          const existingLocalLayer = findFileDataLayer(trail.id);
+          if (existingLocalLayer) {
+            removeFileDataLayers(trail.id);
+          }
+        } else if (change.type === 'modified') {
+          // For now, only the visiblity can be modified
+          updateFileDataLayers(trail.id, trail);
         }
-      } else if (change.type === 'removed') {
-        // Sync the deletion to the local cache
-        const existingLocalLayer = findFileDataLayer(trail.id);
-        if (existingLocalLayer) {
-          removeFileDataLayers(trail.id);
-        }
-      } else if (change.type === 'modified') {
-        // For now, only the visiblity can be modified
-        updateFileDataLayers(trail.id, trail);
-      }
-    });
+      })
+    );
   });
 };
 

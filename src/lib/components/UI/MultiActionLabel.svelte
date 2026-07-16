@@ -29,7 +29,7 @@
   }: Props = $props();
 </script>
 
-<div class="multi-action-label">
+<div class="multi-action-label" onclickcapture={onchange}>
   <LabeledCheckbox ellipsis {name} {label} {disabled} {oninput} bind:checked {onchange} {leading} />
   <button
     class="button-unstyle secondary"

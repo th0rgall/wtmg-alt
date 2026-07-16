@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Icon } from '.';
   // Intended for hover states when ellipsis is enabled.
-  
+
   interface Props {
     icon?: undefined | string;
     labelFor?: undefined | string;
@@ -28,7 +28,9 @@
       <Icon {icon} />
     </div>
   {/if}
-  <span class="label" title={ellipsis ? title : undefined} class:ellipsis>{@render children?.()}</span>
+  <span class="label" title={ellipsis ? title : undefined} class:ellipsis
+    >{@render children?.()}</span
+  >
 </label>
 
 <style>
@@ -40,6 +42,10 @@
     align-items: center;
     cursor: pointer;
     min-width: 0;
+    /* Fill the available width in the flex row so the whole label area (not just the
+       text) is a click target for the checkbox it points at. Only grows into space the
+       container actually has, so content-width containers are unaffected. */
+    flex: 1;
   }
 
   .label {

@@ -42,7 +42,7 @@
 <!-- Just stop click propagation from here -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
-  onclick={(e) => {
+  onclickcapture={(e) => {
     e.stopPropagation();
     onclick?.(e);
   }}
@@ -64,6 +64,7 @@
     font-size: var(--controls-font-size);
     /* Make sure that titles that are too long can get collapsed */
     min-width: 0;
+    flex-grow: 1;
   }
 
   input {

@@ -296,21 +296,22 @@
         source: id,
         layout: {
           'symbol-placement': 'line',
-          // Repeat the name every 250px, tripling the gap once zoomed in past ~14 so it
-          // doesn't repeat too densely when looking at the route up close.
-          'symbol-spacing': ['step', ['zoom'], 250, 14, 250 * 3],
+          // Make sure the names are not repeated too often when zooming in close
+          // follows value, zoom, value, zoom, ...
+          'symbol-spacing': ['step', ['zoom'], 150, 14, 150 * 2, 15, 150 * 2.5],
           'text-field': routeName,
-          // Font grows with zoom: 9px at zoom 6 (and below) to 15px at zoom 12 (and above).
-          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 9, 12, 15],
+          // Font grows with zoom, starting from zoom 5
+          // interpolate follows zoom, value, zoom, value
+          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 10, 12, 12, 14, 14, 15],
           // Perpendicular (screen-space) offset lifting the name off the line.
           'text-offset': [0, -1.3],
+          // Default 45
           'text-max-angle': 40,
+          // The text may be flipped vertically to prevent it from being rendered upside-down.
           'text-keep-upright': true,
-          // Leave Mapbox's built-in collision detection on (the default) so route names
-          // dodge each other instead of piling up where routes run close together. The
-          // trade-off: a name may be dropped at some zooms when it collides with another
-          // label (a base-map street name, another route's name, or a km/endpoint label).
+          // among eachother?
           'text-allow-overlap': false,
+          // with other map symbols (including other trails)?
           'text-ignore-placement': false
         },
         paint: {
