@@ -12,7 +12,6 @@
     ellipsis?: boolean;
     compact?: boolean;
     title?: undefined | string;
-    onclick?: (e: MouseEvent) => void;
     oninput?: (e: Event) => void;
     onchange?: (e: Event) => void;
     /** Optional content rendered between the checkbox and the label. */
@@ -31,7 +30,6 @@
     ellipsis = false,
     compact = false,
     title = undefined,
-    onclick,
     onchange,
     oninput,
     leading,
@@ -39,24 +37,19 @@
   }: Props = $props();
 </script>
 
-<!-- Just stop click propagation from here -->
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-  onclickcapture={(e) => {
-    e.stopPropagation();
-    onclick?.(e);
-  }}
-  class:compact
-  class="checkbox-container"
->
-  <input id={name} type="checkbox" {disabled} {name} {oninput} bind:checked {onchange} />
-  <LabelWithIcon {ellipsis} {compact} title={label} labelFor={name} {icon} {leading}
-    >{label ?? ''}{@render children?.()}</LabelWithIcon
-  >
+<!-- The checkbox lives *inside* the label (via LabelWithIcon's `input` snippet), so clicking
+     anywhere in the label natively toggles it — no click handlers or propagation hacks needed. -->
+<div class="checkbox-container" class:compact>
+  <LabelWithIcon {ellipsis} {compact} title={label} {icon} {leading}>
+    {#snippet input()}
+      <input id={name} type="checkbox" {disabled} {name} {oninput} bind:checked {onchange} />
+    {/snippet}
+    {label ?? ''}{@render children?.()}
+  </LabelWithIcon>
 </div>
 
 <style>
-  div {
+  .checkbox-container {
     display: flex;
     align-items: center;
     margin: 0.1rem 0;
@@ -72,12 +65,12 @@
   }
 
   @media screen and (max-width: 700px) {
-    div {
+    .checkbox-container {
       margin: var(--controls-vert-margin) 0;
       padding: var(--controls-vert-padding) 0;
     }
 
-    div.compact {
+    .checkbox-container.compact {
       margin: calc(0.5 * var(--controls-vert-margin)) 0;
       padding: calc(0.25 * var(--controls-vert-padding)) 0;
     }

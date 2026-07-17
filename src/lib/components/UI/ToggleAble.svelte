@@ -9,13 +9,16 @@
   let { open = $bindable(true), title, content }: Props = $props();
 </script>
 
-<button class="button-container" onclick={() => (open = !open)}>
-  <div class="toggle-item">
+<!-- Only the title bar toggles the section. The content is a sibling of the toggle button (not
+     nested inside it), so clicking interactive content — checkboxes, buttons, links — never
+     collapses the section, and no propagation hacks are needed in the content components. -->
+<div class="toggle-able">
+  <button class="button-unstyle toggle-item" onclick={() => (open = !open)}>
     <span class="sign">{open ? '−' : '+'}</span>
     <div class="title">
       {@render title?.()}
     </div>
-  </div>
+  </button>
   {#if open}
     <div transition:slide={{ duration: 300 }} class="green-border-bottom">
       <div class="content">
@@ -23,11 +26,10 @@
       </div>
     </div>
   {/if}
-</button>
+</div>
 
 <style>
-  button {
-    background-color: transparent;
+  .toggle-able {
     padding-bottom: 0.5rem;
     color: var(--color-green);
   }
@@ -36,6 +38,8 @@
     display: flex;
     justify-content: start;
     align-items: center;
+    width: 100%;
+    text-align: left;
   }
 
   .title {
@@ -56,14 +60,5 @@
     display: flex;
     justify-content: center;
     align-items: center;
-  }
-
-  @media only screen and (max-width: 700px) {
-    /* .toggle-item {
-      padding: 2.4rem 8vw;
-    }
-    .content {
-      margin: 0 16vw 2.4rem 8vw;
-    } */
   }
 </style>

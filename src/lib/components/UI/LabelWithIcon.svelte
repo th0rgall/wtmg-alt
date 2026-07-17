@@ -9,6 +9,13 @@
      * same horizontal margin. When set, it takes precedence over `icon`.
      */
     leading?: import('svelte').Snippet;
+    /**
+     * A form control (e.g. a checkbox/radio `<input>`) rendered *inside* the `<label>`, so
+     * clicking anywhere in the label natively toggles it — no click handlers needed. When set,
+     * `labelFor` is dropped: nesting already associates the two, and pairing it with a `for` to
+     * the same control would be redundant.
+     */
+    input?: import('svelte').Snippet;
     labelFor?: undefined | string;
     ellipsis?: boolean;
     compact?: boolean;
@@ -20,6 +27,7 @@
   let {
     icon = undefined,
     leading = undefined,
+    input = undefined,
     labelFor = undefined,
     ellipsis = false,
     compact = false,
@@ -28,7 +36,8 @@
   }: Props = $props();
 </script>
 
-<label for={labelFor} class:compact>
+<label for={input ? undefined : labelFor} class:compact>
+  {@render input?.()}
   {#if leading}
     <div class="leading">{@render leading()}</div>
   {:else if icon}
