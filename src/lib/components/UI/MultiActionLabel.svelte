@@ -33,7 +33,17 @@
      natively — no click handlers here. The label fills the row up to the secondary button (see
      styles), making the whole row — except that button — one native click target. -->
 <div class="multi-action-label">
-  <LabeledCheckbox ellipsis {name} {label} {disabled} {oninput} bind:checked {onchange} {leading} />
+  <LabeledCheckbox
+    ellipsis
+    {name}
+    {label}
+    {disabled}
+    {oninput}
+    bind:checked
+    {onchange}
+    {leading}
+    hoverStyle
+  />
   <button
     class="button-unstyle secondary"
     onclick={(e) => {
@@ -52,16 +62,6 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-  }
-
-  /* Give the label (not the row) the vertical padding and let it fill the row width, so a click
-     anywhere left of the secondary button lands on the label and toggles the checkbox natively.
-     Same total row height as the previous `padding: 0.5rem 0` on the row. */
-  .multi-action-label :global(.checkbox-container label) {
-    padding: 0.2rem 0;
-    /* TODO: otherwise a g might get cut off below
-    maybe this should be also applied to other instances */
-    line-height: normal;
   }
 
   .secondary {

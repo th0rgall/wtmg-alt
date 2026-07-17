@@ -34,12 +34,14 @@
     icon={hikerIcon}
     label={$_('map.trails.hiking')}
     bind:checked={showHiking}
+    hoverStyle
   />
   <LabeledCheckbox
     name="cycling"
     icon={cyclistIcon}
     label={$_('map.trails.cycling')}
     bind:checked={showCycling}
+    hoverStyle
   />
 </div>
 
@@ -85,10 +87,9 @@
      consecutive bars. */
   .trail-color {
     flex-shrink: 0;
-    width: 0.5rem;
+    width: 0.7rem;
     height: 1.4rem;
-    /* No right margin: any gap here would be dead space between two toggle targets.
-       The `leading` wrapper's horizontal margin provides the (clickable) separation. */
+    margin: 0 0.7rem 0 0.6rem;
     border-radius: 0.25rem;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
     cursor: pointer;

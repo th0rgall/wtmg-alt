@@ -30,8 +30,11 @@
 
 <style>
   .toggle-able {
-    padding-bottom: 0.5rem;
+    padding-bottom: 0.6rem;
     color: var(--color-green);
+  }
+  button {
+    padding-bottom: 0.4rem;
   }
 
   .toggle-item {

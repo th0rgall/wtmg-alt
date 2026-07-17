@@ -12,6 +12,7 @@
     ellipsis?: boolean;
     compact?: boolean;
     title?: undefined | string;
+    hoverStyle?: boolean;
     oninput?: (e: Event) => void;
     onchange?: (e: Event) => void;
     /** Optional content rendered between the checkbox and the label. */
@@ -30,6 +31,7 @@
     ellipsis = false,
     compact = false,
     title = undefined,
+    hoverStyle = false,
     onchange,
     oninput,
     leading,
@@ -37,47 +39,34 @@
   }: Props = $props();
 </script>
 
-<!-- The checkbox lives *inside* the label (via LabelWithIcon's `input` snippet), so clicking
-     anywhere in the label natively toggles it — no click handlers or propagation hacks needed. -->
-<div class="checkbox-container" class:compact>
-  <LabelWithIcon {ellipsis} {compact} title={label} {icon} {leading}>
-    {#snippet input()}
-      <input id={name} type="checkbox" {disabled} {name} {oninput} bind:checked {onchange} />
-    {/snippet}
-    {label ?? ''}{@render children?.()}
-  </LabelWithIcon>
-</div>
+<LabelWithIcon
+  class="checkbox-container"
+  {ellipsis}
+  {compact}
+  title={label}
+  {icon}
+  {leading}
+  {hoverStyle}
+>
+  {#snippet input()}
+    <input id={name} type="checkbox" {disabled} {name} {oninput} bind:checked {onchange} />
+  {/snippet}
+  {label ?? ''}{@render children?.()}
+</LabelWithIcon>
 
 <style>
-  .checkbox-container {
-    display: flex;
-    align-items: center;
-    margin: 0.1rem 0;
-    font-size: var(--controls-font-size);
+  :global(label.checkbox-container) {
     /* Make sure that titles that are too long can get collapsed */
     min-width: 0;
-    flex-grow: 1;
-  }
-
-  input {
-    margin-right: 1rem;
-    cursor: pointer;
   }
 
   @media screen and (max-width: 700px) {
-    .checkbox-container {
-      margin: var(--controls-vert-margin) 0;
-      padding: var(--controls-vert-padding) 0;
-    }
-
-    .checkbox-container.compact {
-      margin: calc(0.5 * var(--controls-vert-margin)) 0;
-      padding: calc(0.25 * var(--controls-vert-padding)) 0;
-    }
-
+    /* Bigger input checkbox on mobile
+    normal width/height is not respected in the flex layout
+    */
     input {
-      width: 2.1rem;
-      height: 2.1rem;
+      min-width: 2rem;
+      min-height: 2rem;
     }
   }
 </style>

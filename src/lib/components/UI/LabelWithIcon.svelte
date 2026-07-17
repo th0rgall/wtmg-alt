@@ -19,9 +19,11 @@
     labelFor?: undefined | string;
     ellipsis?: boolean;
     compact?: boolean;
+    class?: string;
     // TODO: This could be made more accessible.
     title?: undefined | string;
     children?: import('svelte').Snippet;
+    hoverStyle?: boolean;
   }
 
   let {
@@ -32,11 +34,16 @@
     ellipsis = false,
     compact = false,
     title = undefined,
+    class: className,
+    hoverStyle = false,
     children
   }: Props = $props();
 </script>
 
-<label for={input ? undefined : labelFor} class:compact>
+<label
+  for={input ? undefined : labelFor}
+  class={['label-with-icon', { ...(className ? { [className]: true } : {}), compact, hoverStyle }]}
+>
   {@render input?.()}
   {#if leading}
     <div class="leading">{@render leading()}</div>
@@ -59,14 +66,27 @@
     align-items: center;
     cursor: pointer;
     min-width: 0;
-    /* Fill the available width in the flex row so the whole label area (not just the
-       text) is a click target for the checkbox it points at. Only grows into space the
-       container actually has, so content-width containers are unaffected. */
-    flex: 1;
+    flex-grow: 1;
+    font-size: var(--controls-font-size);
+    padding: 0.2rem 0;
+    margin: 0.1rem 0;
+  }
+
+  label :global(input) {
+    cursor: pointer;
+    margin-right: 0.6rem;
+  }
+
+  label.hoverStyle {
+    border-radius: 0.4rem;
+  }
+  label.hoverStyle:hover {
+    background-color: var(--color-gray-bg);
   }
 
   .label {
     width: 100%;
+    line-height: 1.05;
   }
 
   /* Horizontal margin shared by the icon and its `leading` alternative, so both
@@ -79,6 +99,8 @@
   .icon {
     height: 2rem;
     width: 2rem;
+    min-height: 2rem;
+    min-width: 2rem;
     padding-right: 0.2rem;
     display: inline-block;
   }
@@ -97,6 +119,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* In combination with the ellipsis & hidden overflow,
+      low character parts from g e.g. might get cut off with line-height: 1*/
+    line-height: 1.2;
   }
 
   .compact .icon {
@@ -112,6 +137,14 @@
     .icon,
     .leading {
       margin-right: 0.4rem;
+    }
+    label {
+      margin: var(--controls-vert-margin) 0;
+      padding: var(--controls-vert-padding) 0;
+    }
+    .compact {
+      margin: calc(0.5 * var(--controls-vert-margin)) 0;
+      padding: calc(0.25 * var(--controls-vert-padding)) 0;
     }
   }
 </style>
