@@ -71,13 +71,9 @@
 </div>
 
 <div class="layers-and-tools-button" class:in-modal={inModal}>
-  <Button preventing {onclick} inverse={!inModal} xxsmall={!inModal} small={inModal}>
-    <span class="button-text-container">
-      <span class="button-icon">
-        <Icon icon={routesIcon} whiteStroke={inModal} />
-      </span>
-      <span class="button-text">{$_('map.routes.upload-route')}</span>
-    </span>
+  <Button preventing oneline {onclick} inverse={!inModal} xxsmall={!inModal} small={inModal}>
+    <Icon class="route-icon" icon={routesIcon} whiteStroke={inModal} />
+    {$_('map.routes.upload-route')}
   </Button>
 </div>
 
@@ -99,23 +95,33 @@
     opacity: 0.3;
   }
 
-  .button-text-container {
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .button-icon {
-    width: 1.4rem;
-    height: 1.4rem;
-    display: inline-block;
-    margin: 0 0.5rem 0 0.5rem;
-  }
-
   .layers-and-tools-button {
-    margin-top: 0.5rem;
     text-align: center;
   }
 
+  .layers-and-tools-button :global(.route-icon) {
+    width: 1.4rem;
+    height: 1.4rem;
+    margin: 0 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .layers-and-tools-button :global(.btn-text) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .layers-and-tools-button:not(.in-modal) {
+    margin-top: 0.5rem;
+  }
+
+  .layers-and-tools-button:not(.in-modal) :global(.button) {
+    font-size: unset;
+    padding: 0.4rem;
+  }
   /* Inside the mobile MapToolModal: left-align the checkboxes (matching the
      other map tool modals) and give the upload button room to breathe. */
   .static-layers.in-modal,
@@ -130,7 +136,7 @@
     margin-top: 1.5rem;
   }
 
-  .layers-and-tools-button.in-modal .button-icon {
+  .layers-and-tools-button.in-modal :global(.route-icon) {
     width: 1.6rem;
     height: 1.6rem;
     margin: 0 1rem 0 0;
