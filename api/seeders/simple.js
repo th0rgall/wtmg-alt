@@ -76,6 +76,24 @@ const seed = async () => {
         email: 'admin@slowby.travel'
       },
       { firstName: 'Admin', lastName: 'Slowby', countryCode: 'BE' }
+    ),
+    // Two neighboring hosts in Belgium, ~30m apart, to test overlapping garden icons.
+    createNewUser(
+      { email: 'neighbor1@slowby.travel' },
+      { firstName: 'Freddy', lastName: 'One', countryCode: 'BE' }
+    ).then((user) =>
+      createGarden({ latitude: 51.0543, longitude: 3.7174 }, user, {
+        description: 'Neighbor 1 — I overlap with the garden right next door!'
+      })
+    ),
+    createNewUser(
+      { email: 'neighbor2@slowby.travel' },
+      { firstName: 'Claire & Marc', lastName: 'Two', countryCode: 'BE' }
+    ).then((user) =>
+      // ~30m east of neighbor 1 (at ~51°N, 1° longitude ≈ 70km, so 30m ≈ 0.000428°)
+      createGarden({ latitude: 51.0543, longitude: 3.717828 }, user, {
+        description: 'Neighbor 2 — I overlap with the garden right next door!'
+      })
     )
   ]);
 

@@ -8,6 +8,8 @@
   import { nonMemberMaxZoom } from '$lib/constants';
   import { loadImg } from '$lib/api/mapbox';
   import { gardenLayerLoaded } from '$lib/stores/app';
+  import { user } from '$lib/stores/auth';
+  import GardenContextMenu from './GardenContextMenu.svelte';
   import * as Sentry from '@sentry/sveltekit';
   import logger from '$lib/util/logger';
 
@@ -21,7 +23,7 @@
     showGardens: boolean;
     showSavedGardens: boolean;
     savedGardens?: any;
-    onGardenClick: (garden: GardenFeatureProperties) => void;
+    onGardenClick: (garden: Garden) => void;
   }
 
   let {
@@ -100,9 +102,54 @@
     });
   };
 
+  // Context menu shown to zoom-restricted (non-member) viewers when a single click hits more
+  // than one overlapping garden icon, so they can still reach each garden (partially) hidden by overlap.
+  let contextMenuGardens = $state<Garden[] | null>(null);
+  let contextMenuLngLat = $state<[number, number]>([0, 0]);
+
+  const closeContextMenu = () => {
+    contextMenuGardens = null;
+  };
+
   const _onGardenClick = (e: mapboxgl.MapMouseEvent) => {
-    const garden = e.features?.[0]?.properties;
-    onGardenClick(garden);
+    // Mapbox appends marker elements inside the canvas container, so clicks on our (marker-based)
+    // context menu still bubble up and hit-test against the garden layers. Ignore those, so
+    // interacting with the menu never triggers a garden that happens to sit underneath it.
+    const target = e.originalEvent?.target as Element | null;
+    if (target?.closest?.('.garden-context-menu')) return;
+
+    // `e.features` is Mapbox's own hit-test for the clicked garden layers at this point: it may
+    // contain several overlapping icons. Dedupe by id (a saved garden appears in both layers) and
+    // resolve to the full Garden objects (feature properties are serialized by Mapbox).
+    const seen = new Set<string>();
+    const hitGardens: Garden[] = [];
+    for (const feature of e.features ?? []) {
+      const id = feature.properties?.id as string | undefined;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const garden = allGardens.find((g) => g.id === id);
+      if (garden) hitGardens.push(garden);
+    }
+
+    if (hitGardens.length === 0) return;
+
+    if (hitGardens.length === 1) {
+      onGardenClick(hitGardens[0]);
+      return;
+    }
+
+    // More than one garden icon was hit by this single click.
+    if ($user?.superfan) {
+      // Members aren't zoom-restricted: zoom in on the click to pull the icons apart.
+      map.easeTo({
+        center: e.lngLat,
+        zoom: Math.min(map.getMaxZoom(), map.getZoom() + 4)
+      });
+    } else {
+      // Non-members are zoom-capped and can't separate them, so list them in a small overlay.
+      contextMenuGardens = hitGardens;
+      contextMenuLngLat = [e.lngLat.lng, e.lngLat.lat];
+    }
   };
 
   function addPointerOnHover(layerId: string) {
@@ -231,8 +278,9 @@
         });
       });
 
-      map.on('click', unclusteredPointLayerId, _onGardenClick);
-      map.on('click', savedGardenLayerId, _onGardenClick);
+      // Listen on both garden layers at once so a single click reports every overlapping garden
+      // icon it hit (across the "all" and "saved" layers) in `e.features`.
+      map.on('click', [unclusteredPointLayerId, savedGardenLayerId], _onGardenClick);
 
       [clustersLayerId, unclusteredPointLayerId, savedGardenLayerId].forEach(addPointerOnHover);
     } catch (err) {
@@ -273,3 +321,12 @@
     initializeMap();
   });
 </script>
+
+{#if contextMenuGardens}
+  <GardenContextMenu
+    gardens={contextMenuGardens}
+    lngLat={contextMenuLngLat}
+    onSelectGarden={onGardenClick}
+    onClose={closeContextMenu}
+  />
+{/if}

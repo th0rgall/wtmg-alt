@@ -229,6 +229,19 @@ export const getAllListedGardens = async () => {
 
   logger.log('Fetched all gardens');
 
+  // Shuffle the gardens so that, when two (or more) gardens overlap on the map, the one
+  // rendered on top (and thus catching clicks) is not always the same. Firestore returns them
+  // in a deterministic order (by document id), which would otherwise consistently hide the same
+  // neighbor. We use an in-place Fisher-Yates shuffle: O(n), no extra allocations — efficiency
+  // matters more than cryptographic-quality randomness here.
+  allListedGardens.update((gardens) => {
+    for (let i = gardens.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [gardens[i], gardens[j]] = [gardens[j], gardens[i]];
+    }
+    return gardens;
+  });
+
   isFetchingGardens.set(false);
   return get(allListedGardens);
 };
