@@ -66,10 +66,18 @@ Scope your checks to what you changed:
 
 Note: the pre-commit hook (husky + lint-staged) already enforces this
 automatically — it lints/formats staged frontend files with the frontend config
-and staged `api/` files with the API config, and never mixes the two. It does
-**not** run a repo-wide `yarn check`, because the frontend currently has
-pre-existing `svelte-check` type errors (and a few `eslint` errors) unrelated to
-this tooling.
+and staged `api/` files with the API config, and never mixes the two.
+
+It **also runs the type gates** as a pre-commit step, but only for the project
+whose files you staged: staging a frontend `.js`/`.ts`/`.svelte` file runs
+`yarn check` (svelte-check), and staging an `api/**` file runs `yarn check:api`
+(`node api/scripts/typecheck.mjs`). Type checks are whole-project, so lint-staged
+ignores the specific staged filenames and runs the full check — the glob only
+decides _whether_ to run it. Both gates currently pass with 0 errors (warnings
+are non-fatal). This replaces the old `api-typecheck.yml` CI workflow, which was
+removed — the api type gate now lives only in the local pre-commit hook. Because
+that's local-only, a `git commit --no-verify` or a contributor without the hooks
+installed will bypass it.
 
 ### Backend (Firebase)
 
