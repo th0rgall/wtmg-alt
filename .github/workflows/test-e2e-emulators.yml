@@ -51,6 +51,12 @@ jobs:
     container:
       image: ghcr.io/welcometomygarden/wtmg-e2e-ci:24-trixie
       options: --user root
+      # Careful: these are all empty on a `pull_request` run from a *fork*.
+      # GitHub passes no secrets (nor environment-scoped vars, so SENTRY_DSN
+      # goes too) to fork PRs, and every value here comes from the
+      # e2e-test-emulators environment. Nothing below can work in that case —
+      # see the guard step. Push the branch to this repo instead of a fork if
+      # you need these tests on a PR.
       env:
         SENTRY_DSN: ${{vars.SENTRY_DSN}}
         SENTRY_AUTH_TOKEN: ${{secrets.SENTRY_AUTH_TOKEN}}
@@ -113,6 +119,23 @@ jobs:
           key: imagetools-${{ runner.os }}-${{ hashFiles('src/lib/assets/**/*.jpg', 'src/lib/assets/**/*.jpeg', 'src/lib/assets/**/*.png') }}
           restore-keys: |
             imagetools-${{ runner.os }}-
+      # ci/fill-envs.sh substitutes empty values without complaining, so an
+      # unset secret surfaced ~4 minutes later as an unexplained Playwright
+      # click timeout (an empty VITE_MAPBOX_ACCESS_TOKEN makes mapbox-gl throw
+      # "An API access token is required", visible only in the trace). Fail in
+      # a second, naming the variables. Lengths only — never the values.
+      - name: Check required secrets are available
+        run: |
+          missing=''
+          for v in MAPBOX_ACCESS_TOKEN THUNDERFOREST_API_KEY STRIPE_PUBLISHABLE_KEY SENTRY_DSN; do
+            eval "len=\${#$v}"
+            echo "$v: $len chars"
+            [ "$len" -gt 0 ] || missing="$missing $v"
+          done
+          [ -z "$missing" ] || {
+            echo "::error::empty:$missing — expected if this is a pull_request from a fork (${{ github.event.pull_request.head.repo.full_name || github.repository }}), which GitHub gives no secrets"
+            exit 1
+          }
       - name: Set up environment
         run: |
           sed -i -z \
