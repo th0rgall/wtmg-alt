@@ -68,16 +68,16 @@ Note: the pre-commit hook (husky + lint-staged) already enforces this
 automatically — it lints/formats staged frontend files with the frontend config
 and staged `api/` files with the API config, and never mixes the two.
 
-It **also runs the type gates** as a pre-commit step, but only for the project
-whose files you staged: staging a frontend `.js`/`.ts`/`.svelte` file runs
-`yarn check` (svelte-check), and staging an `api/**` file runs `yarn check:api`
-(`node api/scripts/typecheck.mjs`). Type checks are whole-project, so lint-staged
-ignores the specific staged filenames and runs the full check — the glob only
-decides _whether_ to run it. Both gates currently pass with 0 errors (warnings
-are non-fatal). This replaces the old `api-typecheck.yml` CI workflow, which was
-removed — the api type gate now lives only in the local pre-commit hook. Because
-that's local-only, a `git commit --no-verify` or a contributor without the hooks
-installed will bypass it.
+The **type gates run on `pre-push`**, not pre-commit: `.husky/pre-push` runs the
+whole-project `yarn check` (frontend svelte-check) and `yarn check:api`
+(`node api/scripts/typecheck.mjs`, gating `api/src`) before any push. They live
+on pre-push because svelte-check (~10s) + the api gate (~3s) is ~8x a
+lint/format-only commit — too slow to pay on every commit, but fine before code
+leaves the machine. Both gates currently pass with 0 errors (warnings are
+non-fatal). This replaces the old `api-typecheck.yml` CI workflow, which was
+removed. Because the gate is local-only, a `git push --no-verify` or a
+contributor without the hooks installed bypasses it — external fork PRs are
+covered instead by `.github/workflows/external-pr-checks.yml`.
 
 ### Backend (Firebase)
 
