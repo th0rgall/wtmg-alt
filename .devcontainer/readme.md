@@ -20,7 +20,13 @@ persistent [zellij](https://zellij.dev) session.
 
 Requirement: the devcontainers CLI: https://github.com/devcontainers/cli (or VS Code, with the caveats below). Then run these from the repo root:
 
-1. Copy the env template and fill in the secrets (the ones documented in
+1. Create the `supabase_network_wtmg-db` network, which is intended to connect to a Supabase dev env for secondary features. This dev env is optional, butyou need to create the network, otherwise the compose project won't start:
+
+   ```sh
+   docker network create
+   ```
+
+2. Copy the env template and fill in the secrets (the ones documented in
    [`ci/.env.local.example`](../ci/.env.local.example)):
 
    ```sh
@@ -36,17 +42,17 @@ Requirement: the devcontainers CLI: https://github.com/devcontainers/cli (or VS 
    All values are optional — the public repo clones fine and the app boots
    without secrets (some features, e.g. map tiles, need them).
 
-2. Run:
+3. Run:
 
    ```sh
    # Build the base image locally
    ./ci/local-build.sh --only-base
 
    # Build and start the dev container
-   COMPOSE_ENV_FILES=./.devcontainer/.env.compose devcontainer up --workspace-folder .
+   COMPOSE_ENV_FILES=./.devcontainer/.env.compose devcontainer up --workspace-folder . [--remove-existing-container]
    ```
 
-3. Attach
+4. Attach
 
    ```sh
    devcontainer exec --workspace-folder . zellij a
