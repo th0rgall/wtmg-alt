@@ -22,6 +22,7 @@
     "home": "Home",
     "map": "Map",
     "rules": "Rules",
+    "stories": "Stories",
     "faq": {
       "acronym": "FAQ"
     },
@@ -205,6 +206,22 @@
         "copy": "Would you like to open up your garden or do you know someone who would be happy to? Spread the word about <span class=\"notranslate\">Welcome To My Garden</span>! You can invite them to like our <a href=\"https://www.facebook.com/Welcome2mygarden\">Facebook Page</a> too."
       }
     }
+  },
+  "stories": {
+    "title": "Stories",
+    "description": "Moments from the Welcome To My Garden community: gardens, journeys and the people who make slow travel possible.",
+    "load-more": "Show more stories",
+    "empty": "There are no stories to show yet. Check back soon!",
+    "error": "We couldn't load the stories right now.",
+    "retry": "Try again",
+    "modal-label": "Story",
+    "media-count": "+{count}",
+    "image-label": "Photo from this story",
+    "image-label-numbered": "Photo {index} of {total} from this story",
+    "video-label": "Video from this story",
+    "previous-media": "Previous",
+    "next-media": "Next",
+    "go-to-media": "Go to item {index}"
   },
   "faq": {
     "title": "FAQ",

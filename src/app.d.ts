@@ -3,5 +3,9 @@
 declare namespace App {
   interface PageState {
     showMembershipModal?: boolean;
+    /**
+     * The story shown in the shallow-routed story modal on /stories.
+     */
+    story?: import('$lib/types/Story').Story;
   }
 }

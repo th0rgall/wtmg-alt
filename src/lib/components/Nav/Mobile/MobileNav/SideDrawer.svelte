@@ -126,6 +126,9 @@
         </li>
       {/if}
       <li>
+        <a href={$lr(routes.STORIES)} onclick={ontoggle}>{$_('generics.stories')}</a>
+      </li>
+      <li>
         <a href={$lr(routes.ABOUT_US)} onclick={ontoggle}>{$_('generics.about-us')}</a>
       </li>
       <li>

@@ -46,8 +46,7 @@ import { trackEvent } from '$lib/util';
 import { PlausibleEvent } from '$lib/types/Plausible';
 import { handledOpenFromIOSPWA } from '$lib/stores/app';
 import { allListedGardens, hasLoaded as gardenHasLoaded } from '$lib/stores/garden';
-import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_API_URL } from '$env/static/public';
+import { createSupabaseClient } from './supabase';
 import * as Sentry from '@sentry/sveltekit';
 import { lr } from '$lib/util/translation-helpers';
 import { DEFAULT_LANGUAGE } from '$lib/types/general';
@@ -542,16 +541,15 @@ const signInToSupabaseIfNeeded = async (user: User) => {
 
   // Only set the Supabase client if the user is a member or garden owner
   if (supaRole != null && (user?.garden || user?.superfan)) {
-    if (typeof PUBLIC_SUPABASE_API_URL !== 'string' || PUBLIC_SUPABASE_API_URL.length === 0) {
-      logger.warn('PUBLIC_SUPABASE_API_URL not set, skip Supabase init');
+    const client = createSupabaseClient({
+      accessToken: async () => (await firebaseUser.getIdToken()) ?? null
+    });
+    if (!client) {
+      // Supabase is not configured in this environment
       return;
     }
     logger.log('Setting up Supabase client for host/member');
-    supabase.set(
-      createClient(PUBLIC_SUPABASE_API_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        accessToken: async () => (await firebaseUser.getIdToken()) ?? null
-      })
-    );
+    supabase.set(client);
   }
 };
 

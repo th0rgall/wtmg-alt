@@ -62,6 +62,9 @@
         >
       </li>
       <li>
+        <NavLink href={$lr(routes.STORIES)}>{$_('generics.stories')}</NavLink>
+      </li>
+      <li>
         <NavLink href={$lr(routes.ABOUT_US)}>{$_('generics.about-us')}</NavLink>
       </li>
       {#if $user?.superfan}

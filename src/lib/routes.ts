@@ -28,6 +28,7 @@ export const routeDescriptions = {
   RESET_PASSWORD: { route: '/reset-password', requiresAuth: false },
   RULES: { route: '/info/rules', requiresAuth: false },
   SIGN_IN: { route: '/sign-in', requiresAuth: false },
+  STORIES: { route: '/stories', requiresAuth: false },
   MEMBER_PAYMENT: { route: '/become-member/payment', requiresAuth: true },
   // This is actually a stateless page, fully instantiated by its query params
   APP_PAYMENT: { route: '/app-payment', requiresAuth: false },
