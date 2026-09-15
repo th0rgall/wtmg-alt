@@ -1,7 +1,7 @@
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { logger } = require('firebase-functions');
 const { sendMessageReceivedEmail, sendSpamAlertEmail, sendChatBlockedEmail } = require('./mail');
-const { auth, getFunctionUrl } = require('./firebase');
+const { db, auth, getFunctionUrl } = require('./firebase');
 const {
   chatsCol,
   chatsDoc,
@@ -20,6 +20,7 @@ const { getFunctions } = require('firebase-admin/functions');
 const { FirebaseMessagingError } = require('firebase-admin/messaging');
 const { normalizeMessage, buildMessageUrl } = require('./util/mail');
 const { shouldReplicateRuntime } = require('./sharedConfig');
+const { HttpsError } = require('firebase-functions/v2/https');
 
 exports.MAX_MESSAGE_LENGTH = 800;
 
@@ -286,7 +287,7 @@ exports.onChatCreate = async ({ data: chatSnapshot }) => {
     (await senderMetaRef.get()).data() ?? {};
   if (chatBlockedAt) {
     logger.error(
-      'Handling a new chat after the sender was blocked from new chats. Firestore rules should prevent this.',
+      'Handling a new chat after the sender was blocked from new chats. `createChat` should prevent this.',
       {
         chatId,
         senderAuthId,
@@ -408,6 +409,154 @@ exports.onChatCreate = async ({ data: chatSnapshot }) => {
   }
 
   await checkChatBlock();
+};
+
+/**
+ * Creates a new chat between the calling user and `recipientUid`, with `message` as
+ * its first message. This is the only way chats are created: clients can not write
+ * to `chats` directly (see `firestore.rules`).
+ *
+ * Two invariants motivate doing this here instead of in Firestore rules:
+ *
+ * 1. At most one chat may exist between any two users. Rules can only look up known
+ *    document paths with `get()`/`exists()`, never query a collection, so they can
+ *    not see whether a chat between the pair already exists. Only a compliant
+ *    frontend used to prevent duplicates. Without front-end enforcement, future bugs
+ *    in the client (or a maliciously modified client) could still create more than one chat.
+ * 2. A chat and its first message belong together. They are written in one
+ *    transaction, so a failed call can never leave an empty chat behind, and a
+ *    retried one (e.g. after a network error) fails with `already-exists` instead of
+ *    creating a second chat.
+ *
+ * The existence check runs inside the transaction: two concurrent calls contend on
+ * the same query, so the loser is retried and then sees the chat the winner created.
+ *
+ * The preconditions below are the ones that used to live in `canCreateChat()` in
+ * `firestore.rules`, which was dropped along with client-side chat creation.
+ *
+ * @param {FV2.CallableRequest<import('../../src/lib/api/functions').CreateChatRequest>} request
+ * @returns {Promise<import('../../src/lib/api/functions').CreateChatResponse>}
+ */
+exports.createChat = async ({ auth: authContext, data }) => {
+  if (!authContext) {
+    fail('unauthenticated');
+  }
+
+  const { uid: senderId, token } = authContext;
+
+  if (!token?.email_verified) {
+    logger.warn('An unverified user tried to create a chat. The frontend should prevent this.', {
+      senderId
+    });
+    fail('permission-denied');
+  }
+
+  // Validate the payload
+  const { recipientUid: recipientId, message: rawMessage } = data ?? {};
+
+  if (typeof recipientId !== 'string' || recipientId.length === 0) {
+    logger.warn('Missing or invalid recipient UID while creating a chat', { senderId });
+    fail('invalid-argument');
+  }
+
+  if (typeof rawMessage !== 'string') {
+    logger.warn('Missing or invalid first message while creating a chat', { senderId });
+    fail('invalid-argument');
+  }
+
+  const message = rawMessage.trim();
+  if (message.length < 1 || message.length > exports.MAX_MESSAGE_LENGTH) {
+    logger.warn('Invalid first message length while creating a chat', {
+      senderId,
+      length: message.length
+    });
+    fail('invalid-argument');
+  }
+
+  // A user can not start a chat with themselves
+  if (recipientId === senderId) {
+    logger.warn('A user tried to start a chat with themselves', { senderId });
+    fail('invalid-argument');
+  }
+
+  // Check the preconditions on both participants
+  const [senderPublicSnap, recipientPublicSnap, senderMetaSnap] = await Promise.all([
+    usersDoc(senderId).get(),
+    usersDoc(recipientId).get(),
+    usersMetaDoc(senderId).get()
+  ]);
+
+  const senderPublicData = senderPublicSnap.data();
+  if (!senderPublicData) {
+    // Shouldn't happen: every authenticated user has a public user doc.
+    logger.error("The chat creator's public user document does not exist", { senderId });
+    fail('internal');
+  }
+
+  // Only members can start new chats
+  if (!senderPublicData.superfan) {
+    logger.warn('A non-member tried to create a chat. The frontend should prevent this.', {
+      senderId
+    });
+    fail('permission-denied');
+  }
+
+  // The recipient's public document should exist
+  // Note: this is not a Firebase Auth check, implying that you can still send a new message in
+  // a chat with a deleted user.
+  if (!recipientPublicSnap.exists) {
+    logger.warn('A chat was requested with a non-existing recipient', { senderId, recipientId });
+    fail('not-found');
+  }
+
+  // The sender was blocked from starting new chats (see `onChatCreate`)
+  if (senderMetaSnap.data()?.chatBlockedAt) {
+    logger.warn(
+      'A user blocked from new chats tried to create one. The frontend should prevent this.',
+      { senderId }
+    );
+    fail('permission-denied');
+  }
+
+  const chatRef = chatsCol().doc();
+  // All chats the sender participates in. Firestore can't filter on two array members
+  // at once, so the recipient is matched in-process.
+  const sendersChatsQuery = chatsCol().where('users', 'array-contains', senderId);
+
+  await db.runTransaction(async (transaction) => {
+    const sendersChats = await transaction.get(sendersChatsQuery);
+    const existingChat = sendersChats.docs.find((chatDoc) =>
+      chatDoc.data().users.includes(recipientId)
+    );
+
+    if (existingChat) {
+      // The chat ID is included so that a client which lost the response of an earlier,
+      // successful call can still route to the chat that call created.
+      throw new HttpsError('already-exists', 'A chat between these users already exists', {
+        chatId: existingChat.id
+      });
+    }
+
+    const now = Timestamp.now();
+
+    transaction.create(chatRef, {
+      // note: by convention, the sender MUST be the first uid in this array
+      users: [senderId, recipientId],
+      createdAt: now,
+      lastActivity: now,
+      lastMessage: message,
+      lastMessageSeen: false,
+      lastMessageSender: senderId
+    });
+
+    transaction.create(messagesDoc(chatRef.id), {
+      content: message,
+      createdAt: now,
+      from: senderId
+    });
+  });
+
+  return { chatId: chatRef.id };
 };
 
 /**

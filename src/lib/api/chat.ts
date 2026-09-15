@@ -34,6 +34,7 @@ import { isOnIDevicePWA } from '$lib/util/uaInfo';
 import * as Sentry from '@sentry/sveltekit';
 import { lr } from '$lib/util/translation-helpers';
 import logger from '$lib/util/logger';
+import { createChat as createChatCallable } from './functions';
 
 export const createChatObserver = () => {
   const q = query(
@@ -195,31 +196,18 @@ export const unarchiveChat = async (chatId: string, chatName: string, recordForU
 };
 
 /**
- * Creates a chat in Firebase, and sends the given first message from the current user to the recipient.
- * If the recipient UID is invalid, Firstore rules cause an error.
+ * Creates a chat with the given first message from the current user to the recipient.
+ *
+ * Chats are created by the backend: it is the only place that can guarantee at most one
+ * chat exists between two users (Firestore rules can't query), and it writes the chat
+ * and its first message in one transaction. Clients can not create `chats` documents.
+ *
+ * Throws a `functions/already-exists` FirebaseError when a chat between the two users
+ * already exists — its `details.chatId` holds the ID of that chat.
+ *
+ * @returns the ID of the created chat
  */
 export const createChat = async (recipientUid: string, message: string) => {
-  const chatCollection = collection(db(), CHATS) as CollectionReference<FirebaseChat, FirebaseChat>;
-
-  const docRef = await addDoc(chatCollection, {
-    users: [getUser().id, recipientUid],
-    createdAt: Timestamp.now(),
-    lastActivity: Timestamp.now(),
-    lastMessage: message.trim(),
-    lastMessageSeen: false,
-    lastMessageSender: getUser().id
-  });
-
-  const chatMessagesCollection = collection(docRef, MESSAGES) as CollectionReference<
-    FirebaseMessage,
-    FirebaseMessage
-  >;
-
-  await addDoc(chatMessagesCollection, {
-    content: message,
-    createdAt: Timestamp.now(),
-    from: getUser().id
-  });
-
-  return docRef.id;
+  const { data } = await createChatCallable({ recipientUid, message });
+  return data.chatId;
 };

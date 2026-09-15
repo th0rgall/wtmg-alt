@@ -331,6 +331,11 @@ describe('chat', async () => {
   });
 
   describe('chat creation', async () => {
+    // Chats are only created by the backend (api/src/chat.js -> createChat): it is the
+    // only place that can enforce at most one chat between two users, and that can write
+    // the chat together with its first message. Rules deny every client creation, so the
+    // member/chat-block/participant checks that used to live in `canCreateChat()` are
+    // covered by the backend tests instead.
     const createChatFromAlice = async () => {
       const now = Timestamp.now();
       await setDoc(doc(testDb, 'chats/testchat'), {
@@ -341,10 +346,9 @@ describe('chat', async () => {
       });
     };
 
-    it('a superfan can start a new chat if it has no users-meta doc', () =>
-      assertSucceeds(createChatFromAlice()));
+    it('a member can NOT create a chat directly', () => assertFails(createChatFromAlice()));
 
-    it('a non-superfan can NOT start a new chat', async () => {
+    it('a non-member can NOT create a chat directly', async () => {
       const now = Timestamp.now();
 
       await assertFails(
@@ -355,35 +359,6 @@ describe('chat', async () => {
           lastMessage: 'Hello from Bob to Alice'
         })
       );
-    });
-
-    it('a superfan can start a new chat if it has an existing users-meta doc without chatBlockedAt prop', async () => {
-      // Set alice to chat-blocked by the system
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const firestore = context.firestore();
-
-        // Pretend one chat was sent already
-        await setDoc(doc(firestore, 'users-meta/alice'), {
-          chatWindowStartAt: Timestamp.fromMillis(Date.now() - 3600 * 1000),
-          chatCount: 1
-        });
-      });
-
-      // Alice should still be able to create the chat
-      await assertSucceeds(createChatFromAlice());
-    });
-
-    it('disallows start a new chat when the user is blocked', async () => {
-      // Set alice to chat-blocked by the system
-      await testEnv.withSecurityRulesDisabled(async (context) => {
-        const firestore = context.firestore();
-        await setDoc(doc(firestore, 'users-meta/alice'), {
-          chatBlockedAt: Timestamp.now()
-        });
-      });
-
-      // Alice should not be able to create the chat
-      await assertFails(createChatFromAlice());
     });
   });
 
@@ -432,19 +407,6 @@ describe('chat', async () => {
 
     it('prevents a participant from adding their own uid twice to archivedBy', async () => {
       await assertFails(updateDoc(chatDoc(), { archivedBy: ['alice', 'alice'] }));
-    });
-
-    it('prevents creating a chat with archivedBy already set', async () => {
-      const now = Timestamp.now();
-      await assertFails(
-        setDoc(doc(testDb, 'chats/newchat'), {
-          users: ['alice', 'bob'],
-          createdAt: now,
-          lastActivity: now,
-          lastMessage: 'Hello there',
-          archivedBy: ['alice']
-        })
-      );
     });
   });
 });

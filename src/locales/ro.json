@@ -1139,6 +1139,7 @@
     "notify": {
       "unverified": "Te rugăm să îți verifici adresa de e-mail înainte de a începe să trimiți mesaje",
       "empty-message": "Mesajul tău nu poate fi gol",
+      "chat-exists": "Ai deja o conversație cu {firstName}, așa că am deschis-o pentru tine. Mesajul tău nu a fost trimis.",
       "too-long": "Mesajul tău este cu {surplus} {surplus, plural, one {caracter} other {caractere}} prea lung..."
     },
     "go-to-garden": "Mergi la grădină",

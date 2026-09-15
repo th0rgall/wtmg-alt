@@ -6,6 +6,7 @@ const {
   propagateEmailChange
 } = require('./auth');
 const { createUser } = require('./user/createUser');
+const { createChat } = require('./chat');
 const {
   createOrRetrieveUnpaidSubscription
 } = require('./subscriptions/createOrRetrieveUnpaidSubscription');
@@ -16,6 +17,7 @@ const { manageEmailPreferences } = require('./sendgrid/manageEmailPreferences');
 const { logger } = require('firebase-functions');
 
 const handlers = {
+  createChat,
   createCustomerPortalSession,
   createOrRetrieveUnpaidSubscription,
   createStripeCustomer,

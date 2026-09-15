@@ -1139,6 +1139,7 @@
     "notify": {
       "unverified": "Verifica la tua email prima di iniziare a chattare",
       "empty-message": "Il tuo messaggio non può essere vuoto",
+      "chat-exists": "Hai già una chat con {firstName}, quindi l'abbiamo aperta per te. Il tuo messaggio non è stato inviato.",
       "too-long": "Il tuo messaggio è più lungo del dovuto di {surplus} {surplus, plural, one {carattere} other {caratteri}}..."
     },
     "go-to-garden": "Vai al giardino",

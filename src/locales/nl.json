@@ -772,6 +772,7 @@
     "notify": {
       "unverified": "Verifieer jouw e-mail voordat je begint te chatten",
       "empty-message": "Jouw bericht kan niet leeg zijn",
+      "chat-exists": "Je hebt al een chat met {firstName}, dus we hebben die voor jou geopend. Jouw bericht is niet verzonden.",
       "too-long": "Jouw bericht is {surplus} {surplus, plural, one {karakter} other {karakters}} te lang..."
     },
     "go-to-garden": "Ga naar de tuin",

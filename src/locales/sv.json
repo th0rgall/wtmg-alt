@@ -1139,6 +1139,7 @@
     "notify": {
       "unverified": "Verifiera din e-postadress innan du börjar chatta",
       "empty-message": "Ditt meddelande kan inte vara tomt",
+      "chat-exists": "Du har redan en chatt med {firstName}, så vi öppnade den åt dig. Ditt meddelande skickades inte.",
       "too-long": "Ditt meddelande är {surplus} {surplus, plural, one {tecken} other {tecken}} för långt..."
     },
     "go-to-garden": "Gå till trädgård",

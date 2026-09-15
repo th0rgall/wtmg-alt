@@ -48,10 +48,6 @@ service cloud.firestore {
       return request.resource.data
     }
 
-    function userExists(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid))
-    }
-
     // General validation functions
 
     function isNonEmptyString(str) {
@@ -283,15 +279,6 @@ service cloud.firestore {
       )
     }
 
-    function isNotChatBlocked() {
-      // Either there is no user metadata,
-      return !exists(/databases/$(database)/documents/users-meta/$(requesterId()))
-      // or the metadata does not have a block field
-        || !("chatBlockedAt" in get(/databases/$(database)/documents/users-meta/$(requesterId())).data)
-      // or the block field is null
-        || get(/databases/$(database)/documents/users-meta/$(requesterId())).data.chatBlockedAt == null
-    }
-
     // Conditions for archive/unarchive — the ONLY change is adding or removing
     // the requester's own UID from the archivedBy array.
     function isValidArchiveUpdate() {
@@ -320,22 +307,6 @@ service cloud.firestore {
         && (isAdding || isRemoving);
     }
 
-
-    // Conditions for chat creations
-    function canCreateChat() {
-      return isValidChatWrite()
-      // The first user in the participating `users` array must be the chat creator (first message sender)
-        && incomingData().users[0] == requesterId()
-      // Only superfans (members) can create chats
-        && isMember()
-      // Both participants exist
-        && userExists(incomingData().users[0])
-        && userExists(incomingData().users[1])
-      // The sender is not blocked from sending chats
-        && isNotChatBlocked()
-      // A chat can't start off archived
-        && !incomingData().keys().hasAny(['archivedBy'])
-    }
 
     // Conditions for chat updates
     function canUpdateChat() {
@@ -374,7 +345,13 @@ service cloud.firestore {
 
 
     match /chats/{chatId} {
-      allow create: if canCreateChat();
+      // Chats are only created by the backend (`createChat` in api/src/chat.js).
+      // At most one chat may exist between any two users, which rules can not enforce:
+      // they can only `get()`/`exists()` a known document path, never query the `chats`
+      // collection for one between this pair. The backend also writes the chat and its
+      // first message in a single transaction. All the conditions that used to live in
+      // `canCreateChat()` are checked there.
+      allow create: if false;
       allow read: if canReadChat();
       allow update: if canUpdateChat();
       allow delete: if false;

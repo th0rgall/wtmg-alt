@@ -17,6 +17,8 @@
   import { NOTIFICATION_PROMPT_DISMISSED_COOKIE } from '$lib/constants';
   import { OS } from 'ua-parser-js/enums';
   import logger from '$lib/util/logger';
+  import isFirebaseError from '$lib/util/types/isFirebaseError';
+  import notify from '$lib/stores/notification';
   import { deviceId, pushRegistrations } from '$lib/stores/pushRegistrations';
   import { isNativePushRegistration } from '$lib/util/push-registrations';
   import { PushRegistrationStatus } from '$lib/types/PushRegistration';
@@ -104,6 +106,22 @@
     state.showErrorModal = true;
   };
 
+  /**
+   * The ID of the chat that already existed, if that is why creating a chat failed.
+   * The backend allows only one chat between two users.
+   */
+  const getExistingChatId = (exception: unknown): string | undefined => {
+    if (!isFirebaseError(exception) || exception.code !== 'functions/already-exists') {
+      return undefined;
+    }
+    const details = (exception as { details?: unknown }).details;
+    if (details && typeof details === 'object' && 'chatId' in details) {
+      const { chatId } = details as { chatId: unknown };
+      if (typeof chatId === 'string') return chatId;
+    }
+    return undefined;
+  };
+
   export const send = async () => {
     if (!typedMessage) {
       state.hint = get(_)('chat.notify.empty-message');
@@ -124,12 +142,31 @@
         trackEvent(PlausibleEvent.SEND_REQUEST);
         goto(get(lr)(`${routes.CHAT}/${page.params.name}/${newChatId}`));
       } catch (ex) {
-        Sentry.captureException(ex, {
-          extra: {
-            context: 'Creating new chat'
-          }
-        });
-        showChatError(ex);
+        // Our chat list can be stale (the chat exists, but we don't know it yet), or an
+        // earlier attempt may have created the chat while its response never reached us.
+        // Open the existing chat rather than showing an error, and carry the typed text
+        // into it.
+        // Normally the front-end chatches already-existing chats at load/nav time, this
+        // is an extra safeguard protecting against possible bugs or weird network race
+        // conditions.
+        const existingChatId = getExistingChatId(ex);
+        if (existingChatId) {
+          setDraft(draftKey(existingChatId), normalizeWhiteSpace(typedMessage));
+          clearDraft(draftKeyBeforeSend);
+          notify.info(
+            get(_)('chat.notify.chat-exists', {
+              values: { firstName: get(partner)?.name ?? page.params.name }
+            })
+          );
+          goto(get(lr)(`${routes.CHAT}/${page.params.name}/${existingChatId}`));
+        } else {
+          Sentry.captureException(ex, {
+            extra: {
+              context: 'Creating new chat'
+            }
+          });
+          showChatError(ex);
+        }
       }
     } else {
       try {

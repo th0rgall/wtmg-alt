@@ -1139,6 +1139,7 @@
     "notify": {
       "unverified": "Zweryfikuj swój e-mail przed rozpoczęciem czatowania",
       "empty-message": "Wiadomość nie może być pusta",
+      "chat-exists": "Masz już czat z {firstName}, więc otworzyliśmy go dla ciebie. Twoja wiadomość nie została wysłana.",
       "too-long": "Twoja wiadomość jest o {surplus} {surplus, plural, one {znak} few {znaki} many {znaków} other {znaku}} za długa..."
     },
     "go-to-garden": "Przejdź do ogrodu",

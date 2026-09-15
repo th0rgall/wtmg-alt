@@ -1127,6 +1127,7 @@
     "notify": {
       "too-long": "Votre message est trop long de {surplus} {surplus, plural, one {caractère} other {caractères}}…",
       "empty-message": "Votre message ne peut pas être vide",
+      "chat-exists": "Vous avez déjà une conversation avec {firstName}, nous l'avons donc ouverte pour vous. Votre message n'a pas été envoyé.",
       "unverified": "Veuillez confirmer votre adresse électronique avant de commencer à discuter"
     },
     "type-message": "Tapez votre message…",

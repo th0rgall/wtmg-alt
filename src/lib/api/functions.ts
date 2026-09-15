@@ -38,6 +38,25 @@ export type CreateUserRequest = {
 };
 export const createUser = wrapCallable<CreateUserRequest>('createUser');
 
+export type CreateChatRequest = {
+  /** The UID of the user to start the chat with */
+  recipientUid: string;
+  /** The first message of the chat */
+  message: string;
+};
+
+export type CreateChatResponse = {
+  /** The ID of the newly created chat document */
+  chatId: string;
+};
+
+/**
+ * Creates a chat with its first message. Fails with `functions/already-exists` when a
+ * chat between the two users already exists; the existing chat's ID is then available
+ * as `chatId` on the error's `details`.
+ */
+export const createChat = wrapCallable<CreateChatRequest, CreateChatResponse>('createChat');
+
 type email = string;
 
 export const requestPasswordReset = wrapCallable<email>('requestPasswordReset');
